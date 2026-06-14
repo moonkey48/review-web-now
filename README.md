@@ -35,7 +35,21 @@
 | Vite / CRA / 순수 HTML | `index.html` 의 `</body>` 직전 |
 
 이 한 줄을 넣어도 **일반 방문자에겐 아무것도 안 보입니다.** 아래 초대 링크를 거친 사람에게만 위젯이 떠요.
-(코드를 직접 넣기 번거로우면 맨 아래 **[AI로 설치](#ai로-설치-선택)** 프롬프트를 복사해서 쓰면 됩니다.)
+
+### 🤖 AI에게 맡기기 (코드 직접 안 건드리고)
+
+Claude Code · Cursor 등에 아래를 **그대로 붙여넣으면** 자동 설치됩니다:
+
+```text
+이 웹 프로젝트에 "Reviewer" 리뷰 위젯을 설치해줘.
+1. 앱 최상위 레이아웃의 <body> 끝에 한 줄 추가(이미 있으면 생략):
+   <script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer></script>
+   - Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html
+2. 위젯은 ?review=1 링크를 연 브라우저에만 보이고 일반 사용자에겐 안 보인다는 점 반영.
+3. 설치 후 초대 링크 https://<이 앱 주소>/?review=1 를 알려줘.
+```
+
+> Claude Code라면 `.claude/skills/reviewer-install/` 스킬을 `~/.claude/skills/`로 복사한 뒤 "reviewer 설치해줘"라고만 해도 됩니다.
 
 ## 사용법
 
@@ -78,19 +92,6 @@ https://내서비스.com/?review=1
 - **공유 방식**: 리뷰어끼리 코멘트가 실시간으로 공유되진 않아요. 각자 MD로 내보내 **합치는** 방식입니다. → 모두 **같은 URL**에서 리뷰하세요(도메인이 다르면 저장소가 갈립니다).
 - **비우기**: 위젯 패널의 **전체 삭제**.
 - **CSP/Safari**: 보안정책이 엄격하면 `script-src 'self'`가 허용돼야 합니다(보통 문제없음).
-
-## AI로 설치 (선택)
-
-Claude Code · Cursor 등에 아래를 **그대로 붙여넣으면** 자동 설치됩니다:
-
-```text
-이 웹 프로젝트에 "Reviewer" 리뷰 위젯을 설치해줘.
-1. 앱 최상위 레이아웃의 <body> 끝에 한 줄 추가(이미 있으면 생략):
-   <script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer></script>
-   - Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html
-2. 위젯은 ?review=1 링크를 연 브라우저에만 보이고 일반 사용자에겐 안 보인다는 점 반영.
-3. 설치 후 초대 링크 https://<이 앱 주소>/?review=1 를 알려줘.
-```
 
 ## 사이트를 수정할 수 없다면 (북마클릿)
 
