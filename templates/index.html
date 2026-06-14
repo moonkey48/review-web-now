@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reviewer — 웹페이지에 바로 남기는 리뷰</title>
+    <style>
+      :root {
+        --bg: #f7f7f8; --card: #fff; --ink: #18181b; --sub: #6b7280;
+        --line: #e5e7eb; --brand: #6366f1; --brand-d: #4f46e5; --ok: #047857;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+          Pretendard, "Noto Sans KR", "Segoe UI", sans-serif;
+        line-height: 1.65; -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 820px; margin: 0 auto; padding: 40px 20px 100px; }
+      .tag {
+        display: inline-block; font-size: 12px; font-weight: 700; color: #4338ca;
+        background: #e0e7ff; border-radius: 999px; padding: 4px 12px; margin-bottom: 14px;
+      }
+      h1 { font-size: 32px; margin: 0 0 10px; letter-spacing: -0.02em; }
+      h2 { font-size: 20px; margin: 44px 0 14px; letter-spacing: -0.01em; }
+      p { margin: 8px 0; }
+      .lead { color: var(--sub); font-size: 16px; max-width: 620px; }
+      code, kbd {
+        background: #f1f1f4; border: 1px solid var(--line); border-radius: 6px;
+        padding: 1px 6px; font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      kbd { font-weight: 700; }
+
+      /* ── 설치 드래그 존 ───────────────────────── */
+      .install {
+        margin-top: 26px; background: linear-gradient(135deg, #eef2ff, #faf5ff);
+        border: 1px solid #ddd6fe; border-radius: 18px; padding: 26px;
+      }
+      .barhint {
+        font-size: 12px; color: var(--sub); border: 1px dashed #c7d2fe;
+        border-radius: 10px; padding: 7px 12px; background: #fff;
+        display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px;
+      }
+      .install-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      a.bmk {
+        display: inline-flex; align-items: center; gap: 9px;
+        background: var(--ink); color: #fff; text-decoration: none;
+        font-weight: 800; font-size: 17px; padding: 15px 26px; border-radius: 12px;
+        box-shadow: 0 6px 18px rgba(79, 70, 229, 0.28); cursor: grab;
+        animation: bob 1.8s ease-in-out infinite;
+      }
+      a.bmk:active { cursor: grabbing; }
+      @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+      .install-help { font-size: 14px; color: #4b5563; }
+      .install-help b { color: var(--ink); }
+      .mini {
+        font-size: 12px; color: var(--sub); margin-top: 12px; display: flex;
+        align-items: center; gap: 10px; flex-wrap: wrap;
+      }
+      button.copy {
+        font: inherit; font-size: 12px; font-weight: 700; color: var(--brand);
+        background: #fff; border: 1px solid #c7d2fe; border-radius: 8px;
+        padding: 5px 11px; cursor: pointer;
+      }
+      button.copy:hover { background: #eef2ff; }
+
+      /* ── 스텝 카드 ────────────────────────────── */
+      .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 620px) { .steps { grid-template-columns: 1fr; } }
+      .step {
+        background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+        padding: 16px 18px; display: flex; gap: 14px; align-items: flex-start;
+      }
+      .step .n {
+        flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+        background: var(--brand); color: #fff; font-weight: 800; font-size: 15px;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .step h3 { margin: 2px 0 3px; font-size: 15px; }
+      .step p { margin: 0; font-size: 13.5px; color: var(--sub); }
+      .step.full { grid-column: 1 / -1; }
+
+      /* ── 라이브 데모 ──────────────────────────── */
+      .demo-note {
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px;
+        padding: 12px 16px; font-size: 14px; color: #92400e; margin-bottom: 14px;
+      }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+      .demo-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: #fff; }
+      .demo-card h4 { margin: 0 0 6px; font-size: 14px; }
+      .demo-card .muted { color: var(--sub); font-size: 13px; margin: 0 0 10px; }
+      button.demo {
+        background: var(--brand); color: #fff; border: none; border-radius: 9px;
+        padding: 9px 16px; font: inherit; font-weight: 700; cursor: pointer;
+      }
+      button.demo.ghost { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+      input.demo { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+
+      /* ── 팀 적용 / FAQ ────────────────────────── */
+      .panelbox {
+        background: var(--card); border: 1px solid var(--line);
+        border-radius: 14px; padding: 18px 20px;
+      }
+      .snippet {
+        display: flex; align-items: center; gap: 10px; justify-content: space-between;
+        background: #0f172a; color: #e2e8f0; border-radius: 10px;
+        padding: 12px 14px; margin: 10px 0; overflow-x: auto;
+      }
+      .snippet code { background: none; border: none; color: #e2e8f0; padding: 0; white-space: nowrap; }
+      .snippet button.copy { color: #c7d2fe; background: #1e293b; border-color: #334155; }
+      .snippet button.copy:hover { background: #334155; }
+      details { border-top: 1px solid var(--line); padding: 12px 0; }
+      details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+      details p { color: var(--sub); font-size: 14px; margin: 8px 0 2px; }
+      ul.clean { color: var(--sub); font-size: 14px; padding-left: 18px; }
+      ul.clean li { margin: 5px 0; }
+      hr { border: none; border-top: 1px solid var(--line); margin: 44px 0; }
+      footer { color: var(--sub); font-size: 12px; }
+      .arrow { font-size: 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <span class="tag">설치 1분 · 서버·계정 없음</span>
+      <h1>웹페이지에 바로 남기는 리뷰, Reviewer</h1>
+      <p class="lead">
+        보고 있는 화면의 버튼·텍스트·이미지를 콕 집어 코멘트를 남기고, 한 번에
+        <b>Markdown</b>으로 복사해 동료에게 전달하세요. 설치는 <b>북마크 하나</b>면 끝입니다.
+      </p>
+
+      <!-- 설치 -->
+      <div class="install">
+        <div class="barhint">
+          <span>💡</span>
+          <span>북마크바가 안 보이면 <kbd>⌘</kbd>+<kbd>⇧</kbd>+<kbd>B</kbd> (Mac) /
+            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>B</kbd> (Windows)</span>
+        </div>
+        <div class="install-row">
+          <a class="bmk" href="__BOOKMARKLET__" onclick="return false;" title="북마크바로 끌어다 놓으세요">
+            📌 코멘트 남기기
+          </a>
+          <div class="install-help">
+            <span class="arrow">👈</span> 이 버튼을 마우스로 잡아 <b>브라우저 북마크바로 끌어다 놓으세요.</b><br />
+            (클릭이 아니라 <b>드래그</b>입니다. 한 번만 설치하면 돼요.)
+          </div>
+        </div>
+        <div class="mini">
+          <span>드래그가 안 되나요?</span>
+          <button class="copy" data-copy="bookmarklet">북마클릿 코드 복사</button>
+          <span>→ 새 북마크를 만들고 주소(URL) 칸에 붙여넣으세요.</span>
+          <span style="margin-left:auto">위젯 __SIZE_KB__KB · 북마클릿 __BMK_KB__KB</span>
+        </div>
+      </div>
+
+      <!-- 60초 사용법 -->
+      <h2>⏱️ 60초 사용법</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="n">1</div>
+          <div><h3>설치</h3><p>위 <b>📌 코멘트 남기기</b>를 북마크바로 드래그. (최초 1회)</p></div>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <div><h3>켜기</h3><p>리뷰할 페이지를 연 뒤 그 북마크를 <b>클릭</b> → 우하단에 💬 버튼 등장.</p></div>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <div><h3>코멘트</h3><p>💬 → <b>📍 코멘트 모드</b> → 화면 요소 클릭 → 내용 입력 → 등록.</p></div>
+        </div>
+        <div class="step">
+          <div class="n">4</div>
+          <div><h3>전달</h3><p>패널의 <b>📋 MD 복사</b> 또는 <b>⬇ 다운로드</b> → 동료에게 붙여넣기/파일 전달.</p></div>
+        </div>
+        <div class="step full">
+          <div class="n">5</div>
+          <div><h3>끄기</h3><p>북마크를 다시 클릭하면 위젯이 닫힙니다. 남긴 코멘트는 그대로 저장돼요.</p></div>
+        </div>
+      </div>
+
+      <!-- 라이브 데모 -->
+      <h2>🎮 지금 여기서 연습해보세요</h2>
+      <div class="demo-note">
+        이 페이지엔 위젯이 <b>이미 켜져 있어요</b> — 화면 <b>우하단의 💬 버튼</b>을 누른 뒤,
+        아래 카드의 버튼·입력칸에 직접 핀을 찍어 보세요.
+      </div>
+      <div class="grid">
+        <div class="demo-card">
+          <h4>결제 카드</h4>
+          <p class="muted">월 $29 · 팀 5명까지</p>
+          <button class="demo" id="checkout-btn">결제하기</button>
+        </div>
+        <div class="demo-card">
+          <h4>알림 설정</h4>
+          <p class="muted">이메일 / 슬랙 알림</p>
+          <button class="demo ghost" data-testid="settings-toggle">토글</button>
+        </div>
+        <div class="demo-card">
+          <h4>이름</h4>
+          <input class="demo" placeholder="이름을 입력하세요" />
+        </div>
+        <div class="demo-card">
+          <h4>요약</h4>
+          <ul class="clean" style="margin:0">
+            <li>활성 사용자 1,204</li>
+            <li>전환율 3.2%</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 팀 적용 -->
+      <h2>👥 내 서비스/팀에 적용 (개발자용)</h2>
+      <div class="panelbox">
+        <p style="margin-top:0">
+          배포된 서비스에 심어 팀이 쓰되 <b>일반 사용자에겐 안 보이게</b> 하려면:
+        </p>
+        <ol style="padding-left:18px; font-size:14px; margin:6px 0">
+          <li>앱 최상위 레이아웃의 <code>&lt;body&gt;</code> 끝에 한 줄 추가 (CDN에서 바로 로드 — 파일 복사 불필요):</li>
+        </ol>
+        <div class="snippet">
+          <code id="snip-script">&lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer&gt;&lt;/script&gt;</code>
+          <button class="copy" data-copy="#snip-script">복사</button>
+        </div>
+        <ol start="3" style="padding-left:18px; font-size:14px; margin:6px 0">
+          <li>리뷰어에게 <b>초대 링크</b>를 공유:</li>
+        </ol>
+        <div class="snippet">
+          <code id="snip-link">https://내서비스.com/?review=1</code>
+          <button class="copy" data-copy="#snip-link">복사</button>
+        </div>
+
+        <p style="margin: 16px 0 6px; font-size: 14px">
+          <b>🤖 또는 — AI에게 한 번에 설치시키기</b>
+          <span class="muted">(Claude Code · Cursor 등에 그대로 붙여넣기)</span>
+        </p>
+        <div class="snippet" style="align-items: flex-start">
+          <pre id="snip-prompt" style="margin:0; white-space:pre-wrap; font-size:12.5px; line-height:1.55; font-family:ui-monospace,SFMono-Regular,Menlo,monospace">이 웹 프로젝트에 "Reviewer" 리뷰 위젯을 설치해줘.
+1. 앱 최상위 레이아웃의 &lt;body&gt; 끝에 한 줄 추가(이미 있으면 생략):
+   &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer&gt;&lt;/script&gt;
+   (Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html)
+2. 위젯은 ?review=1 링크를 연 브라우저에만 보이고 일반 사용자에겐 안 보인다는 점 반영.
+3. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=1 를 알려줘.</pre>
+          <button class="copy" data-copy="#snip-prompt" style="flex-shrink:0">복사</button>
+        </div>
+
+        <ul class="clean" style="margin-top:12px">
+          <li>초대 링크를 한 번 연 브라우저에만 위젯이 뜹니다. <b>일반 사용자는 못 봅니다.</b></li>
+          <li>리뷰는 <b>모두 같은 URL</b>에서 (코멘트는 도메인별 localStorage에 저장됨).</li>
+          <li>서로의 코멘트는 보이지 않습니다 — 각자 MD로 내보내 합칩니다.</li>
+        </ul>
+      </div>
+
+      <!-- FAQ -->
+      <h2>❓ 자주 묻는 질문</h2>
+      <div class="panelbox">
+        <details open>
+          <summary>내 코멘트는 어디에 저장되나요?</summary>
+          <p>그 사이트의 <b>이 브라우저 안(localStorage)</b>에만요. 외부로 전송되지 않습니다(서버 없음).</p>
+        </details>
+        <details>
+          <summary>동료도 내가 단 코멘트를 보나요?</summary>
+          <p>아니요. 각자 자기 브라우저에 쌓이고, <b>MD로 내보내 합치는</b> 방식입니다.</p>
+        </details>
+        <details>
+          <summary>위젯이 안 떠요 / 막혀요.</summary>
+          <p>보안정책(CSP)이 엄격한 사이트는 북마클릿이 차단될 수 있어요. Safari에서 막히면
+            위 <b>스크립트 태그 방식</b>을 쓰세요. http(비보안) 페이지에서 복사가 막히면 <b>⬇ 다운로드</b>를 이용하세요.</p>
+        </details>
+        <details>
+          <summary>코멘트를 다 지우려면?</summary>
+          <p>위젯 패널 하단의 <b>전체 삭제</b>를 누르면 이 사이트의 코멘트가 비워집니다.</p>
+        </details>
+      </div>
+
+      <hr />
+      <footer>Reviewer · 로컬 전용 리뷰 위젯 · 의존성 Preact + esbuild · 서버·DB·계정 없음</footer>
+    </div>
+
+    <!-- 이 데모 페이지는 게이트를 건너뛰고 항상 위젯을 띄운다 (라이브 샌드박스). -->
+    <script>
+      window.__RV_FORCE__ = 1;
+    </script>
+    <script src="./widget.js" defer></script>
+
+    <!-- 복사 버튼 -->
+    <script>
+      (function () {
+        function flash(btn) {
+          var t = btn.textContent;
+          btn.textContent = "복사됨 ✓";
+          setTimeout(function () { btn.textContent = t; }, 1500);
+        }
+        async function copy(text) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              return true;
+            }
+          } catch (e) {}
+          try {
+            var ta = document.createElement("textarea");
+            ta.value = text; ta.style.position = "fixed"; ta.style.top = "-9999px";
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            var ok = document.execCommand("copy"); ta.remove(); return ok;
+          } catch (e) { return false; }
+        }
+        document.querySelectorAll("[data-copy]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            var key = btn.getAttribute("data-copy");
+            var text = key === "bookmarklet"
+              ? document.querySelector("a.bmk").getAttribute("href")
+              : (document.querySelector(key) || {}).textContent || "";
+            if (await copy(text.trim())) flash(btn);
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

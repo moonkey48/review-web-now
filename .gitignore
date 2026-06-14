@@ -1,0 +1,9 @@
+# dependencies
+/node_modules
+
+# 주의: dist/ 는 일부러 커밋한다 (jsDelivr CDN이 dist/widget.js 를 서빙)
+
+# misc
+.DS_Store
+*.tsbuildinfo
+*.log
