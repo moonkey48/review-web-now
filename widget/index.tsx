@@ -47,22 +47,26 @@ function safeRemove(key: string) {
   }
 }
 
-// 스크립트 태그 경로의 노출 게이트.
-function shouldMount(): boolean {
-  if (window.__RV_FORCE__) return true; // 북마클릿/데모는 무조건 표시
+// 노출 게이트 + 잠금 여부.
+//  - 북마클릿/데모(__RV_FORCE__): 바로 표시, 비번 없음
+//  - 이미 잠금 해제된 리뷰어(rv:enabled): 바로 표시
+//  - ?review 최초 진입: 마운트하되 "잠금"(공용 비번 입력 화면) — 비번 통과 시에만 rv:enabled 저장
+//  - 그 외(일반 사용자): 아무것도 안 함
+function shouldMount(): { mount: boolean; locked: boolean } {
+  if (window.__RV_FORCE__) return { mount: true, locked: false };
+  if (safeGet(KEY_ENABLED) === "1") return { mount: true, locked: false };
   try {
     const url = new URL(location.href);
     if (url.searchParams.has("review")) {
-      // 초대 링크 1회 방문 → 이 브라우저에서 계속 켜짐 + URL에서 흔적 제거
-      safeSet(KEY_ENABLED, "1");
+      // 흔적은 즉시 제거. enabled는 비번 통과 후에만 저장한다(미통과 ?review는 영속 안 됨).
       url.searchParams.delete("review");
       history.replaceState(history.state, "", url.toString());
-      return true;
+      return { mount: true, locked: true };
     }
   } catch {
     /* URL 파싱 실패 무시 */
   }
-  return safeGet(KEY_ENABLED) === "1";
+  return { mount: false, locked: false };
 }
 
 // pushState/replaceState 훅 — SPA 경로 변경을 위젯에 알린다.
@@ -87,7 +91,7 @@ function installHistoryHook() {
   };
 }
 
-function mount() {
+function mount(locked: boolean) {
   installHistoryHook();
 
   const host = document.createElement("div");
@@ -99,12 +103,19 @@ function mount() {
     render(null, shadow);
     host.remove();
     delete window.__REVIEWER__;
-    // 스크립트 태그 모드에서 "닫기" = 이 브라우저에서 끔(다시 ?review 링크로 켠다).
+    // 스크립트 태그 모드에서 "닫기" = 이 브라우저에서 끔(다시 ?review 링크 + 비번으로 켠다).
     // 북마클릿 모드에선 플래그가 없으니 이 호출은 무해하다.
     safeRemove(KEY_ENABLED);
   };
 
-  render(<App onHide={remove} />, shadow);
+  render(
+    <App
+      onHide={remove}
+      locked={locked}
+      onUnlock={() => safeSet(KEY_ENABLED, "1")}
+    />,
+    shadow,
+  );
   window.__REVIEWER__ = { remove };
 }
 
@@ -114,10 +125,11 @@ function start() {
     window.__REVIEWER__.remove();
     return;
   }
-  if (!shouldMount()) return; // 게이트: 초대받지 않은 사용자에겐 아무것도 안 함
+  const { mount: should, locked } = shouldMount(); // 게이트
+  if (!should) return; // 초대받지 않은 사용자에겐 아무것도 안 함
   if (document.getElementById(HOST_ID)) return; // 방어적 중복 가드
   if (!document.body) return;
-  mount();
+  mount(locked);
 }
 
 if (document.readyState === "loading") {

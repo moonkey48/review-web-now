@@ -46,6 +46,46 @@ input, textarea { font: inherit; color: inherit; }
   box-shadow: 0 4px 16px rgba(0,0,0,.3); white-space: nowrap;
 }
 
+/* ── 코멘트 모드 상태바 (오버레이보다 위 — 종료 버튼 클릭 가능) ── */
+.rv-modebar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  z-index: 2147483630;
+  display: flex; align-items: center; gap: 10px;
+  background: #18181b; color: #fff; font-size: 12px; font-weight: 600;
+  padding: 7px 7px 7px 14px; border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35); white-space: nowrap;
+}
+.rv-modebar-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #6366f1;
+  animation: rv-pulse 1.4s infinite;
+}
+@keyframes rv-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(99,102,241,.6); }
+  70% { box-shadow: 0 0 0 7px rgba(99,102,241,0); }
+  100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+}
+.rv-modebar-exit {
+  background: #fff; color: #18181b; border-radius: 999px;
+  padding: 4px 12px; font-size: 12px; font-weight: 700;
+}
+.rv-modebar-exit:hover { background: #e4e4e7; }
+
+/* ── 입장(잠금) 화면 ───────────────────────── */
+.rv-lock-backdrop {
+  position: fixed; inset: 0; z-index: 2147483646;
+  background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.rv-lock {
+  width: 300px; padding: 18px; display: flex; flex-direction: column; gap: 10px;
+  background: #fff; border: 1px solid #e4e4e7; border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.28);
+}
+.rv-lock-title { font-weight: 700; font-size: 16px; }
+.rv-lock-desc { font-size: 12px; color: #71717a; margin: -4px 0 2px; }
+.rv-lock-err { font-size: 12px; color: #dc2626; }
+.rv-lock .rv-row-end { margin-top: 4px; }
+
 /* ── 핀 ──────────────────────────────────────── */
 .rv-pin {
   position: fixed; z-index: 2147483560;
