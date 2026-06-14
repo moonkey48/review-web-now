@@ -8,7 +8,15 @@ import type { Anchor, RvComment } from "./types";
 export interface AppProps {
   // "위젯 숨기기" / 북마클릿 끄기 — 호스트를 완전히 제거한다.
   onHide: () => void;
+  // ?review 최초 진입 시 잠금 상태(공용 비밀번호 입력 필요)
+  locked: boolean;
+  // 공용 비밀번호 통과 시 호출 — rv:enabled 영속 저장
+  onUnlock: () => void;
 }
+
+// 공용 접근 비밀번호(공유 시크릿). 번들에 포함되므로 암호학적 보안이 아니라
+// 링크를 가진 사람 중에서도 한 번 더 거르는 캐주얼 게이트다.
+const ACCESS_PASSWORD = "letsur01";
 
 const SITE_TITLE = document.title || location.host;
 
@@ -69,7 +77,8 @@ function downloadText(filename: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function App({ onHide }: AppProps) {
+export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
+  const [locked, setLocked] = useState(initialLocked);
   const [path, setPath] = useState(location.pathname);
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
   const [panelOpen, setPanelOpen] = useState(false);
@@ -170,6 +179,24 @@ export function App({ onHide }: AppProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // 잠금(공용 비밀번호 미통과) 상태에선 위젯 대신 입장 화면만 보여준다.
+  if (locked) {
+    return (
+      <div className="rv-root">
+        <style>{CSS_TEXT}</style>
+        <Lock
+          initialName={name}
+          onUnlock={(nick) => {
+            setName(nick);
+            onUnlock();
+            setLocked(false);
+          }}
+          onClose={onHide}
+        />
+      </div>
+    );
+  }
 
   const startMode = () => {
     setPanelOpen(false);
@@ -282,6 +309,8 @@ export function App({ onHide }: AppProps) {
       <style>{CSS_TEXT}</style>
 
       {mode ? <Overlay onPick={onPick} onCancel={exitMode} /> : null}
+
+      {sticky ? <ModeBar picking={mode} onExit={exitMode} /> : null}
 
       {pins.map(({ c, n, pos }) => (
         <button
@@ -421,10 +450,96 @@ function Overlay({
           }}
         />
       ) : null}
-      <div className="rv-mode-hint">
-        코멘트할 위치를 클릭하세요 · 계속 추가됩니다 · ESC로 종료
-      </div>
     </>
+  );
+}
+
+/* ── 코멘트 모드 상태바 (상시 표시 + 종료 버튼) ── */
+function ModeBar({ picking, onExit }: { picking: boolean; onExit: () => void }) {
+  return (
+    <div className="rv-modebar">
+      <span className="rv-modebar-dot" />
+      <span>
+        코멘트 모드 · {picking ? "요소를 클릭해 남기세요" : "작성 중…"}
+      </span>
+      <button className="rv-modebar-exit" onClick={onExit}>
+        종료
+      </button>
+    </div>
+  );
+}
+
+/* ── 입장(잠금) 화면: 이름 + 공용 비밀번호 ── */
+function Lock({
+  initialName,
+  onUnlock,
+  onClose,
+}: {
+  initialName: string;
+  onUnlock: (nickname: string) => void;
+  onClose: () => void;
+}) {
+  const [nick, setNick] = useState(initialName);
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState(false);
+
+  const submit = () => {
+    const n = nick.trim();
+    if (!n || !pw) return;
+    if (pw !== ACCESS_PASSWORD) {
+      setErr(true);
+      return;
+    }
+    onUnlock(n);
+  };
+
+  return (
+    <div className="rv-lock-backdrop">
+      <div className="rv-lock">
+        <div className="rv-lock-title">리뷰 참여</div>
+        <p className="rv-lock-desc">이름과 공용 비밀번호를 입력하세요.</p>
+        <input
+          className="rv-input"
+          placeholder="이름(닉네임)"
+          value={nick}
+          onInput={(e: Event) =>
+            setNick((e.currentTarget as HTMLInputElement).value)
+          }
+        />
+        <input
+          className="rv-input"
+          type="password"
+          placeholder="공용 비밀번호"
+          value={pw}
+          autoFocus
+          onInput={(e: Event) => {
+            setErr(false);
+            setPw((e.currentTarget as HTMLInputElement).value);
+          }}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        {err ? (
+          <div className="rv-lock-err">비밀번호가 올바르지 않습니다.</div>
+        ) : null}
+        <div className="rv-row-end">
+          <button className="rv-btn rv-btn-ghost" onClick={onClose}>
+            닫기
+          </button>
+          <button
+            className="rv-btn rv-btn-primary"
+            disabled={!nick.trim() || !pw}
+            onClick={submit}
+          >
+            시작
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -472,6 +587,12 @@ function Composer({
           onInput={(e: Event) =>
             setAuthor((e.currentTarget as HTMLInputElement).value)
           }
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              submit();
+            }
+          }}
         />
       ) : null}
       <textarea
