@@ -101,7 +101,10 @@ ok(mdAll.includes("[x]") && mdAll.includes("[ ]"), "MD 체크박스 상태");
 ok(mdAll.includes("핀: `#checkout-btn`"), "MD 핀 셀렉터 라벨");
 ok(mdAll.includes("페이지 코멘트"), "MD 페이지 코멘트 라벨");
 ok(mdAll.includes("10:30 (KST)"), "MD 생성 시각 KST");
-ok(mdAll.includes("> 둘째 줄도 있음"), "MD 다중행 본문 전문 포함");
+ok(mdAll.includes("   둘째 줄도 있음"), "MD 다중행 본문 들여쓰기 포함");
+ok(!mdAll.includes("### "), "MD 코멘트별 제목 없음");
+ok(mdAll.includes("위치: `/pricing`"), "MD 코멘트별 경로 포함");
+ok(mdAll.includes("위치: `/home`"), "MD 코멘트별 경로 포함(다른 페이지)");
 
 const mdOpen = buildMarkdown("데모 사이트", store.listAll(), { status: "open" });
 ok(!mdOpen.includes("[x]"), "open 필터: 해결됨 제외");

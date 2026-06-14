@@ -75,6 +75,7 @@ export function App({ onHide }: AppProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [tab, setTab] = useState<"page" | "all">("page");
   const [mode, setMode] = useState(false);
+  const [sticky, setSticky] = useState(false); // 연속 코멘트 모드 — 한 건 남겨도 계속 켜둔다
   const [draft, setDraft] = useState<{ x: number; y: number; anchor: Anchor } | null>(
     null,
   );
@@ -112,6 +113,7 @@ export function App({ onHide }: AppProps) {
         setActiveId(null);
         setDraft(null);
         setMode(false);
+        setSticky(false);
       }
     };
     window.addEventListener("reviewer:nav", onNav);
@@ -161,6 +163,7 @@ export function App({ onHide }: AppProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setMode(false);
+      setSticky(false);
       setDraft(null);
       setActiveId(null);
     };
@@ -172,7 +175,14 @@ export function App({ onHide }: AppProps) {
     setPanelOpen(false);
     setActiveId(null);
     setDraft(null);
+    setSticky(true); // 연속 모드로 시작 — 종료 전까지 계속 핀을 찍을 수 있다
     setMode(true);
+  };
+
+  // 코멘트(핀) 모드 완전 종료 — 연속 모드 플래그까지 해제한다
+  const exitMode = () => {
+    setMode(false);
+    setSticky(false);
   };
 
   const onPick = (x: number, y: number) => {
@@ -197,10 +207,19 @@ export function App({ onHide }: AppProps) {
     });
     setDraft(null);
     bumpData();
+    // 연속 코멘트 모드: 한 건 남겨도 곧장 다음 위치를 찍을 수 있게 모드를 되살린다
+    if (sticky) setMode(true);
+  };
+
+  // 작성 폼 취소 — 연속 모드면 오버레이로 돌아가 다시 위치를 고를 수 있게 한다
+  const cancelDraft = () => {
+    setDraft(null);
+    if (sticky) setMode(true);
   };
 
   const openPageComposer = () => {
     setPanelOpen(false);
+    setSticky(false); // 페이지 코멘트는 연속 핀 모드와 무관 — 끄고 시작
     setDraft({
       x: window.innerWidth - 320,
       y: window.innerHeight - 330,
@@ -262,7 +281,7 @@ export function App({ onHide }: AppProps) {
     <div className="rv-root">
       <style>{CSS_TEXT}</style>
 
-      {mode ? <Overlay onPick={onPick} onCancel={() => setMode(false)} /> : null}
+      {mode ? <Overlay onPick={onPick} onCancel={exitMode} /> : null}
 
       {pins.map(({ c, n, pos }) => (
         <button
@@ -289,7 +308,7 @@ export function App({ onHide }: AppProps) {
           isPage={draft.anchor.type === "page"}
           name={name}
           onSubmit={submitDraft}
-          onCancel={() => setDraft(null)}
+          onCancel={cancelDraft}
         />
       ) : null}
 
@@ -311,6 +330,7 @@ export function App({ onHide }: AppProps) {
         onClick={() => {
           setPanelOpen((o) => !o);
           setMode(false);
+          setSticky(false);
         }}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -401,7 +421,9 @@ function Overlay({
           }}
         />
       ) : null}
-      <div className="rv-mode-hint">코멘트할 위치를 클릭하세요 · ESC 취소</div>
+      <div className="rv-mode-hint">
+        코멘트할 위치를 클릭하세요 · 계속 추가됩니다 · ESC로 종료
+      </div>
     </>
   );
 }

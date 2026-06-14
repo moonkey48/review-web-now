@@ -38,11 +38,6 @@ export function shortStamp(iso: string | Date): string {
   return `${p.month}/${p.day} ${p.hour}:${p.minute}`;
 }
 
-function firstLine(body: string): string {
-  const line = (body.split(/\r?\n/)[0] ?? "").trim() || "(내용 없음)";
-  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
-}
-
 function anchorLabel(anchor: Anchor | null): string {
   if (anchor?.type === "pin") return `핀: \`${anchor.selector.replace(/`/g, "'")}\``;
   return "페이지 코멘트";
@@ -87,15 +82,14 @@ export function buildMarkdown(
     lines.push(`## ${page} (${items.length}개)`);
     for (const c of items) {
       seq += 1;
-      const headline = firstLine(c.body);
+      const body = c.body.split(/\r?\n/);
       lines.push("");
-      lines.push(`### ${seq}. [${c.resolved ? "x" : " "}] ${headline}`);
-      if (c.body.trim() !== headline) {
-        lines.push("");
-        for (const l of c.body.split(/\r?\n/)) lines.push(`> ${l}`);
-      }
-      lines.push("");
-      lines.push(`- ${c.authorName} · ${shortStamp(c.createdAt)} · ${anchorLabel(c.anchor)}`);
+      // 제목 없이 본문을 체크박스 항목으로 바로 싣는다 (첫 줄 → 나머지 줄은 들여쓰기)
+      lines.push(`${seq}. [${c.resolved ? "x" : " "}] ${body[0] ?? ""}`);
+      for (const l of body.slice(1)) lines.push(`   ${l}`);
+      // 코멘트마다 경로·위치를 명시 — AI가 어디에 남긴 리뷰인지 바로 찾도록
+      lines.push(`   - 위치: \`${page}\` · ${anchorLabel(c.anchor)}`);
+      lines.push(`   - ${c.authorName} · ${shortStamp(c.createdAt)}`);
     }
   }
   lines.push("");
