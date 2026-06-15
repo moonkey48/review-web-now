@@ -82,7 +82,6 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
   const [path, setPath] = useState(location.pathname);
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
   const [panelOpen, setPanelOpen] = useState(false);
-  const [tab, setTab] = useState<"page" | "all">("page");
   const [mode, setMode] = useState(false);
   const [sticky, setSticky] = useState(false); // 연속 코멘트 모드 — 한 건 남겨도 계속 켜둔다
   const [draft, setDraft] = useState<{ x: number; y: number; anchor: Anchor } | null>(
@@ -191,6 +190,7 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
             setName(nick);
             onUnlock();
             setLocked(false);
+            setPanelOpen(true); // 첫 진입 시 위젯을 펼친 활성 상태로
           }}
           onClose={onHide}
         />
@@ -289,7 +289,8 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
     showToast("모든 코멘트를 삭제했어요");
   };
 
-  const unresolved = comments.filter((c) => !c.resolved).length;
+  // 전체 서비스 기준 미해결 카운트
+  const unresolved = allComments.filter((c) => !c.resolved).length;
   const pins = comments
     .map((c, i) => ({ c, n: i + 1 }))
     .filter(({ c }) => c.anchor?.type === "pin" && (!hideResolved || !c.resolved))
@@ -310,7 +311,17 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
 
       {mode ? <Overlay onPick={onPick} onCancel={exitMode} /> : null}
 
-      {sticky ? <ModeBar picking={mode} onExit={exitMode} /> : null}
+      {/* 중앙 하단 컨트롤: 평소엔 "시작", 코멘트 모드 중엔 상태바+종료 */}
+      {sticky ? (
+        <ModeBar picking={mode} onExit={exitMode} />
+      ) : (
+        <StartBar onStart={startMode} />
+      )}
+
+      {/* 작성 중인 핀 대상 요소를 테두리로 강조 */}
+      {draft && draft.anchor.type === "pin" ? (
+        <DraftHighlight anchor={draft.anchor} />
+      ) : null}
 
       {pins.map(({ c, n, pos }) => (
         <button
@@ -370,8 +381,6 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
 
       {panelOpen ? (
         <Panel
-          tab={tab}
-          setTab={setTab}
           comments={comments}
           allComments={allComments}
           hideResolved={hideResolved}
@@ -379,7 +388,6 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
           currentPath={path}
           name={name}
           setName={setName}
-          onStart={startMode}
           onPageComment={openPageComposer}
           onGoTo={goTo}
           onCopyMd={copyMd}
@@ -466,6 +474,40 @@ function ModeBar({ picking, onExit }: { picking: boolean; onExit: () => void }) 
         종료
       </button>
     </div>
+  );
+}
+
+/* ── 코멘트 모드 시작 바 (중앙 하단, 비활성 시) ── */
+function StartBar({ onStart }: { onStart: () => void }) {
+  return (
+    <button className="rv-startbar" onClick={onStart}>
+      📍 코멘트 모드 시작
+    </button>
+  );
+}
+
+/* ── 작성 중인 핀 대상 요소 강조 박스 ── */
+function DraftHighlight({ anchor }: { anchor: Anchor }) {
+  if (anchor.type !== "pin") return null;
+  let el: Element | null = null;
+  try {
+    el = document.querySelector(anchor.selector);
+  } catch {
+    return null;
+  }
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  return (
+    <div
+      className="rv-draft-box"
+      style={{
+        left: r.left + "px",
+        top: r.top + "px",
+        width: r.width + "px",
+        height: r.height + "px",
+      }}
+    />
   );
 }
 
@@ -619,7 +661,7 @@ function Composer({
           disabled={!text.trim() || !author.trim()}
           onClick={submit}
         >
-          등록
+          등록 <span className="rv-kbd">⌘↵</span>
         </button>
       </div>
     </div>
@@ -748,8 +790,6 @@ function Detail({
 
 /* ── 패널 ─────────────────────────────────────── */
 function Panel({
-  tab,
-  setTab,
   comments,
   allComments,
   hideResolved,
@@ -757,7 +797,6 @@ function Panel({
   currentPath,
   name,
   setName,
-  onStart,
   onPageComment,
   onGoTo,
   onCopyMd,
@@ -766,8 +805,6 @@ function Panel({
   onClose,
   onHide,
 }: {
-  tab: "page" | "all";
-  setTab: (t: "page" | "all") => void;
   comments: RvComment[];
   allComments: RvComment[];
   hideResolved: boolean;
@@ -775,7 +812,6 @@ function Panel({
   currentPath: string;
   name: string;
   setName: (n: string) => void;
-  onStart: () => void;
   onPageComment: () => void;
   onGoTo: (c: RvComment) => void;
   onCopyMd: () => void;
@@ -787,8 +823,10 @@ function Panel({
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name);
 
-  const items = tab === "page" ? comments : allComments;
-  const filtered = hideResolved ? items.filter((c) => !c.resolved) : items;
+  // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다
+  const filtered = hideResolved
+    ? allComments.filter((c) => !c.resolved)
+    : allComments;
   const totalForExport = hideResolved
     ? allComments.filter((c) => !c.resolved).length
     : allComments.length;
@@ -802,24 +840,7 @@ function Panel({
         </button>
       </div>
 
-      <button className="rv-mode-btn" onClick={onStart}>
-        📍 코멘트 모드 시작
-      </button>
-
-      <div className="rv-tabs">
-        <button
-          className={`rv-tab${tab === "page" ? " rv-active" : ""}`}
-          onClick={() => setTab("page")}
-        >
-          이 페이지 ({comments.length})
-        </button>
-        <button
-          className={`rv-tab${tab === "all" ? " rv-active" : ""}`}
-          onClick={() => setTab("all")}
-        >
-          전체 ({allComments.length})
-        </button>
-      </div>
+      <div className="rv-panel-sub">전체 서비스 리뷰 · {allComments.length}개</div>
 
       <div className="rv-panel-toolbar">
         <label className="rv-check">
@@ -843,7 +864,6 @@ function Panel({
         ) : (
           filtered.map((c) => {
             const lost =
-              tab === "page" &&
               c.anchor?.type === "pin" &&
               c.pagePath === currentPath &&
               resolveAnchor(c.anchor) === null;
@@ -854,13 +874,12 @@ function Panel({
                 onClick={() => onGoTo(c)}
               >
                 <span className="rv-item-num">
-                  {tab === "page" ? comments.indexOf(c) + 1 : "•"}
+                  {c.pagePath === currentPath ? comments.indexOf(c) + 1 : "•"}
                 </span>
                 <span style={{ minWidth: "0", flex: "1", display: "block" }}>
                   <span className="rv-item-text">{c.body}</span>
                   <span className="rv-item-meta" style={{ display: "block" }}>
-                    {c.authorName} · {timeLabel(c.createdAt)}
-                    {tab === "all" ? ` · ${c.pagePath}` : ""}
+                    {c.authorName} · {timeLabel(c.createdAt)} · {c.pagePath}
                     {c.anchor?.type !== "pin" ? (
                       <span className="rv-badge rv-badge-page">페이지</span>
                     ) : null}
