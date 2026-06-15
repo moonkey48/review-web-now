@@ -86,6 +86,36 @@ input, textarea { font: inherit; color: inherit; }
 .rv-lock-err { font-size: 12px; color: #dc2626; }
 .rv-lock .rv-row-end { margin-top: 4px; }
 
+/* ── 코멘트 모드 시작 바 (중앙 하단) ── */
+.rv-startbar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  z-index: 2147483628;
+  background: #6366f1; color: #fff; font-size: 13px; font-weight: 700;
+  padding: 10px 18px; border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(79,70,229,.4);
+  transition: transform .12s ease;
+}
+.rv-startbar:hover { background: #4f46e5; transform: translateX(-50%) translateY(-2px); }
+
+/* ── 작성 중 대상 요소 강조 박스 ── */
+.rv-draft-box {
+  position: fixed; pointer-events: none; z-index: 2147483551;
+  border: 2px solid #6366f1; background: rgba(99,102,241,.12);
+  border-radius: 4px; box-shadow: 0 0 0 2px rgba(99,102,241,.25);
+}
+
+/* ── 등록 버튼 단축키 키캡 ── */
+.rv-kbd {
+  display: inline-block; font-size: 11px; line-height: 1;
+  background: rgba(255,255,255,.22); border-radius: 4px;
+  padding: 2px 5px; margin-left: 5px; font-weight: 700;
+}
+
+/* ── 패널 부제(전체 서비스 표시) ── */
+.rv-panel-sub {
+  padding: 8px 12px 0; font-size: 12px; color: #71717a; font-weight: 600;
+}
+
 /* ── 핀 ──────────────────────────────────────── */
 .rv-pin {
   position: fixed; z-index: 2147483560;
@@ -200,10 +230,17 @@ input, textarea { font: inherit; color: inherit; }
   border-top: 1px solid #f1f1f4; padding: 8px 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.rv-foot-link { font-size: 11px; color: #71717a; }
-.rv-foot-link:hover { color: #18181b; }
-.rv-foot-link.rv-danger { color: #dc2626; }
-.rv-foot-link.rv-danger:hover { color: #b91c1c; }
+/* 하단 액션 버튼들 — 잘 보이게 칩 형태로 */
+.rv-foot-link {
+  font-size: 12px; color: #3f3f46; font-weight: 600;
+  padding: 6px 11px; border-radius: 8px;
+  border: 1px solid #e4e4e7; background: #fafafa;
+}
+.rv-foot-link:hover { color: #18181b; background: #f4f4f5; border-color: #d4d4d8; }
+.rv-foot-link.rv-danger { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+.rv-foot-link.rv-danger:hover { color: #b91c1c; background: #fee2e2; border-color: #fca5a5; }
+.rv-panel-foot { gap: 6px; flex-wrap: wrap; }
+.rv-export .rv-btn { padding: 9px 14px; font-size: 13px; }
 
 /* ── MD 내보내기 ────────────────────────────── */
 .rv-export { padding: 8px 12px; border-top: 1px solid #f1f1f4; }
