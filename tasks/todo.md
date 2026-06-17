@@ -186,3 +186,35 @@
 - **`contextRoot`/`annotate`(`capture.ts`)**: width/inline/el-꽉참 가드 + 박스 좌표 캔버스 경계 clamp.
 - 보류(저영향 엣지): 스크린샷 배지 번호 삭제 후 UI와 드리프트(래스터 고착·본질적), zip64 4GB 한계.
 - 검증: typecheck · **selftest 42/42** · build · 실브라우저 재검(앵커 생성·스크린샷 박스·배지 무회귀 확인)
+
+## 12. v0.4.1 CDN 태그 배포
+
+목표: 설치 스크립트에서 `@v0.4.1`로 고정해 쓸 수 있도록 원격 `main` 최신 커밋에 Git 태그를 만들고 jsDelivr 서빙을 검증한다.
+
+- [x] 원격 `main` 최신 커밋과 기존 태그 확인
+- [x] `v0.4.1` 태그를 원격 `main` 커밋에 생성
+- [x] `v0.4.1` 태그를 origin에 push
+- [x] jsDelivr `@v0.4.1/dist/widget.js` 응답 확인
+
+검토:
+- `v0.4.1` annotated tag를 PR #4 머지 커밋 `7282a1c0a6bfb1e3a3d94603029272fc1e1d3451`에 생성.
+- `git push origin v0.4.1`로 원격 태그 배포 완료.
+- jsDelivr 확인: `https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v0.4.1/dist/widget.js`가 HTTP 200, `x-jsd-version: 0.4.1`, `content-length: 61169`로 응답.
+- SRI: `sha384-iYtv/hV7zgzzemTPIps7JgREUYBOWctnaiLCE34zJ5WjeIEhQbiPwXMdzoWeydt0`
+
+## 13. README/CDN 설치 안내 버전 고정
+
+목표: 설치 문서가 `@main` 대신 immutable 버전 태그(`@v0.4.1`)를 안내하도록 바꾸고, 버전 관련 수정 때 README를 함께 갱신하는 규칙을 남긴다.
+
+- [x] README와 설치 페이지 템플릿의 `@main` 안내 확인
+- [x] README 설치 스니펫/AI 프롬프트/개발 안내를 버전 태그 기준으로 수정
+- [x] `templates/index.html` 복사 스니펫과 AI 프롬프트를 버전 태그 기준으로 수정
+- [x] 버전/CDN 변경 시 README 갱신 규칙을 `tasks/lessons.md`에 추가
+- [x] 빌드 및 검색으로 `@main` 안내 잔존 여부 검증
+
+검토:
+- README 설치 스니펫과 AI 설치 프롬프트를 `@v0.4.1` + SRI(`sha384-iYtv/hV7zgzzemTPIps7JgREUYBOWctnaiLCE34zJ5WjeIEhQbiPwXMdzoWeydt0`) 기준으로 수정.
+- 설치 페이지 템플릿(`templates/index.html`)의 복사 스니펫과 AI 프롬프트도 같은 버전 고정 URL로 수정.
+- 공개 문서에서는 브랜치 기준 설치 문자열을 제거하고 "브랜치 별칭 대신 버전 태그"로 안내.
+- `tasks/lessons.md`에 버전/CDN 변경 시 README와 설치 페이지 템플릿을 함께 갱신하는 규칙 추가.
+- 검증: `pnpm build` 통과. `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음.

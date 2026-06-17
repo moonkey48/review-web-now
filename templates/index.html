@@ -219,9 +219,12 @@
           <li>앱 최상위 레이아웃의 <code>&lt;body&gt;</code> 끝에 한 줄 추가 (CDN에서 바로 로드 — 파일 복사 불필요):</li>
         </ol>
         <div class="snippet">
-          <code id="snip-script">&lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer&gt;&lt;/script&gt;</code>
+          <code id="snip-script">&lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v0.4.1/dist/widget.js" integrity="sha384-iYtv/hV7zgzzemTPIps7JgREUYBOWctnaiLCE34zJ5WjeIEhQbiPwXMdzoWeydt0" crossorigin="anonymous" defer&gt;&lt;/script&gt;</code>
           <button class="copy" data-copy="#snip-script">복사</button>
         </div>
+        <p class="muted" style="font-size:13px">
+          설치 URL은 브랜치 별칭 대신 <code>@v0.4.1</code>처럼 버전 태그로 고정하세요.
+        </p>
         <ol start="3" style="padding-left:18px; font-size:14px; margin:6px 0">
           <li>리뷰어에게 <b>초대 링크</b>를 공유:</li>
         </ol>
@@ -237,10 +240,11 @@
         <div class="snippet" style="align-items: flex-start">
           <pre id="snip-prompt" style="margin:0; white-space:pre-wrap; font-size:12.5px; line-height:1.55; font-family:ui-monospace,SFMono-Regular,Menlo,monospace">이 웹 프로젝트에 "Reviewer" 리뷰 위젯을 설치해줘.
 1. 앱 최상위 레이아웃의 &lt;body&gt; 끝에 한 줄 추가(이미 있으면 생략):
-   &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer&gt;&lt;/script&gt;
+   &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v0.4.1/dist/widget.js" integrity="sha384-iYtv/hV7zgzzemTPIps7JgREUYBOWctnaiLCE34zJ5WjeIEhQbiPwXMdzoWeydt0" crossorigin="anonymous" defer&gt;&lt;/script&gt;
    (Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html)
-2. 위젯은 ?review=&lt;리뷰어이름&gt; 링크로 들어왔을 때만 보이고 일반 사용자에겐 안 보인다는 점 반영.
-3. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=&lt;리뷰어이름&gt; 를 알려줘.</pre>
+2. CDN URL은 브랜치 별칭이 아니라 현재 문서의 @v0.4.1 같은 버전 태그로 고정.
+3. 위젯은 ?review=&lt;리뷰어이름&gt; 링크로 들어왔을 때만 보이고 일반 사용자에겐 안 보인다는 점 반영.
+4. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=&lt;리뷰어이름&gt; 를 알려줘.</pre>
           <button class="copy" data-copy="#snip-prompt" style="flex-shrink:0">복사</button>
         </div>
 

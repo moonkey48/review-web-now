@@ -12,3 +12,5 @@
 - 2026-06-17: 스크린샷 주석 색은 대상 UI와 동색이면 보이지 않는다(데모 버튼이 위젯 강조색 `#6366f1`와 같아 카무플라주). 흰 halo + 대비색(빨강 `#ef4444`)으로 임의 배경에서 대비를 보장하라.
 - 2026-06-17: 핸드오프 정확도는 "더 똑똑한 셀렉터 하나"가 아니라 같은 위치를 여러 방식으로 중복 기술하는 "다층 앵커"로 푼다(W3C Web Annotation 패턴). 단 라이브러리 정적 포함은 북마클릿이 raw 바이트를 그대로 싣기 때문에(gzip 무의미) 금지 — TextQuote(앞뒤맥락)·role+name·Text Fragment는 모두 순수 DOM/문자열로 자체 구현(번들 라이브러리 0). [[reviewer-screenshots]]
 - 2026-06-17: 무거운 fuzzy 재앵커링(diff-match-patch raw 76KB·32자 초과 throw)은 위젯이 아니라 리포트를 소비하는 Claude Code 측 책임 — 위젯은 가벼운 "생성"만, "복원"은 소비 측. Text Fragment(#:~:text=)는 SPA 클라이언트 라우팅에선 발동하지 않고 디렉티브가 URL에서 스트립돼 JS 복구 불가 → 보조 채널로만.
+- 2026-06-17: jsDelivr CDN 반영 문제를 볼 때는 먼저 실제 설치 URL이 `@main`인지 `@vX.Y.Z`인지 확인한다. 버전 태그 URL은 main 머지나 purge로 새 코드가 되지 않으며, 새 태그를 만들거나 설치 URL의 버전을 바꿔야 한다.
+- 2026-06-17: Reviewer의 CDN 버전 태그, SRI, 설치 스크립트가 바뀌는 작업은 반드시 README와 설치 페이지 템플릿(`templates/index.html`)을 함께 갱신한다. README/프롬프트/복사 스니펫에 `@main`을 다시 넣지 않는다.
