@@ -218,3 +218,29 @@
 - 공개 문서에서는 브랜치 기준 설치 문자열을 제거하고 "브랜치 별칭 대신 버전 태그"로 안내.
 - `tasks/lessons.md`에 버전/CDN 변경 시 README와 설치 페이지 템플릿을 함께 갱신하는 규칙 추가.
 - 검증: `pnpm build` 통과. `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음.
+
+## 14. 스크린샷 첨부 내보내기 누락 개선
+
+문제:
+- 스크린샷 체크 후 캡처가 비동기로 진행되는 동안 바로 MD 복사/다운로드를 누르면, 캡처 메타가 아직 코멘트에 붙지 않아 리포트에서 스크린샷 줄이 빠질 수 있다.
+- 일반 `MD 다운로드`는 텍스트 파일만 내려받아 사용자가 스크린샷도 포함된다고 기대하기 어렵다.
+
+계획:
+- [x] 진행 중인 스크린샷 캡처 작업을 추적하고, 복사/다운로드/파일 내보내기 전에 완료를 기다린다.
+- [x] 다운로드 버튼은 첨부 이미지가 있으면 `review.md + images/*.png` ZIP을 내려받도록 변경한다.
+- [x] 패널에 스크린샷 처리 중/이미지 포함 상태를 명확히 표시한다.
+- [x] README와 설치 페이지 안내를 새 다운로드 동작에 맞게 수정한다.
+- [x] `pnpm typecheck`, `pnpm test`, `pnpm build`로 검증한다.
+
+검토:
+- 캡처 작업을 `captureJobs` ref로 추적하고 `pendingShots`를 패널에 표시.
+- `copyMd`, `downloadMd`, `exportFilesWithShots`는 내보내기 전에 진행 중인 캡처를 `waitForCaptures()`로 기다린다.
+- 일반 다운로드는 첨부 이미지가 있으면 `review-*.zip`을 내려받고, ZIP 안에 `review.md`와 `images/<id>.png`를 함께 넣는다. 이미지가 없으면 기존처럼 `.md` 단일 파일을 내려받는다.
+- 폴더 저장 버튼은 이미지가 있을 때 보조 액션으로 유지.
+- README와 설치 페이지 템플릿에 "스크린샷이 있으면 다운로드가 ZIP으로 내려받음" 안내 추가.
+- 다음 CDN 태그용 새 번들 SRI: `sha384-IPjPyGlrBhgxVG0a9uJ0Xo6yhQPndMM6M0pBhsX8hG6lDPExPOSjltZ94E3eApf0`
+- 검증:
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 42 passed, 0 failed
+  - `pnpm build` 통과
+  - `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음

@@ -98,6 +98,8 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [, setTick] = useState(0); // 레이아웃 변화 시 핀 재배치용
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const captureJobs = useRef<Promise<void>[]>([]);
+  const [pendingShots, setPendingShots] = useState(0);
 
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -114,6 +116,23 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   }, []);
 
   const bumpData = useCallback(() => setRev((r) => r + 1), []);
+
+  const trackCapture = useCallback((job: Promise<void>) => {
+    captureJobs.current = [...captureJobs.current, job];
+    setPendingShots(captureJobs.current.length);
+    void job.finally(() => {
+      captureJobs.current = captureJobs.current.filter((j) => j !== job);
+      setPendingShots(captureJobs.current.length);
+    });
+  }, []);
+
+  const waitForCaptures = useCallback(async () => {
+    while (captureJobs.current.length) {
+      const jobs = [...captureJobs.current];
+      showToast(`스크린샷 ${jobs.length}장 처리 중…`);
+      await Promise.allSettled(jobs);
+    }
+  }, [showToast]);
 
   const comments = useMemo(() => store.list(path), [path, rev]);
   const allComments = useMemo(() => store.listAll(), [rev]);
@@ -251,27 +270,31 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     // 연속 코멘트 모드: 한 건 남겨도 곧장 다음 위치를 찍을 수 있게 모드를 되살린다
     if (sticky) setMode(true);
     // 스크린샷은 등록 후 비동기로 첨부(html2canvas 지연 로드 → IndexedDB)
-    if (target) {
+    const captureTarget = target;
+    if (captureTarget) {
       // 캡처 시작 시점의 경로·배지 번호를 고정(await 중 SPA 이동 대비)
       const capturePath = pathRef.current;
       const badge = store.list(capturePath).length; // 작성 순번 — 스크린샷 배지
-      showToast("스크린샷 캡처 중…");
-      try {
-        const cap = await captureElement(target, { badge });
-        if (pathRef.current !== capturePath || !target.isConnected) {
-          // 캡처 도중 SPA 이동/요소 분리 — 엉뚱한 페이지에 첨부하지 않고 조용히 스킵
-        } else if (!cap) {
-          showToast("스크린샷 캡처 실패");
-        } else if (await putShot(c.id, cap.blob)) {
-          store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
-          bumpData();
-          showToast("스크린샷을 첨부했어요");
-        } else {
-          showToast("스크린샷 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+      const captureJob = (async () => {
+        showToast("스크린샷 캡처 중…");
+        try {
+          const cap = await captureElement(captureTarget, { badge });
+          if (pathRef.current !== capturePath || !captureTarget.isConnected) {
+            // 캡처 도중 SPA 이동/요소 분리 — 엉뚱한 페이지에 첨부하지 않고 조용히 스킵
+          } else if (!cap) {
+            showToast("스크린샷 캡처 실패");
+          } else if (await putShot(c.id, cap.blob)) {
+            store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
+            bumpData();
+            showToast("스크린샷을 첨부했어요");
+          } else {
+            showToast("스크린샷 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+          }
+        } catch {
+          showToast("스크린샷 캡처 실패 — 네트워크/CSP를 확인하세요");
         }
-      } catch {
-        showToast("스크린샷 캡처 실패 — 네트워크/CSP를 확인하세요");
-      }
+      })();
+      trackCapture(captureJob);
     }
   };
 
@@ -304,26 +327,52 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
 
   const exportStatus: "all" | "open" = hideResolved ? "open" : "all";
 
-  const copyMd = async () => {
-    const md = buildMarkdown(SITE_TITLE, store.listAll(), { status: exportStatus });
-    const ok = await copyText(md);
-    showToast(ok ? "MD를 클립보드에 복사했어요" : "복사 실패 — 다운로드를 사용하세요");
+  const prepareExport = async () => {
+    await waitForCaptures();
+    const all = store.listAll();
+    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
+    const shots = await getShots(
+      visible.filter((c) => c.shot).map((c) => c.shot!.id),
+    );
+    // IndexedDB blob이 사라진 깨진 메타는 MD에서 이미지 참조를 만들지 않는다.
+    const commentsForMd = all.map((c) =>
+      c.shot && !shots.has(c.shot.id) ? { ...c, shot: null } : c,
+    );
+    const md = buildMarkdown(SITE_TITLE, commentsForMd, { status: exportStatus });
+    return { md, shots };
   };
 
-  const downloadMd = () => {
-    const md = buildMarkdown(SITE_TITLE, store.listAll(), { status: exportStatus });
+  const copyMd = async () => {
+    const { md, shots } = await prepareExport();
+    const ok = await copyText(md);
+    showToast(
+      ok
+        ? shots.size
+          ? `MD를 복사했어요 · 이미지 ${shots.size}장은 다운로드에 포함돼요`
+          : "MD를 클립보드에 복사했어요"
+        : "복사 실패 — 다운로드를 사용하세요",
+    );
+  };
+
+  const downloadMd = async () => {
+    const { md, shots } = await prepareExport();
+    if (shots.size) {
+      await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
+      showToast(`review-*.zip 다운로드를 시작했어요 · 이미지 ${shots.size}장`);
+      return;
+    }
     downloadText(`review-${fileStamp()}.md`, md);
     showToast("review-*.md 다운로드를 시작했어요");
   };
 
   // 스크린샷 포함 내보내기 — 폴더 저장(FS Access) 우선, 미지원/실패 시 zip 폴백.
   const exportFilesWithShots = async () => {
-    const all = store.listAll();
-    const md = buildMarkdown(SITE_TITLE, all, { status: exportStatus });
-    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
-    const shots = await getShots(
-      visible.filter((c) => c.shot).map((c) => c.shot!.id),
-    );
+    const { md, shots } = await prepareExport();
+    if (!shots.size) {
+      downloadText(`review-${fileStamp()}.md`, md);
+      showToast("첨부된 스크린샷이 없어 MD만 다운로드했어요");
+      return;
+    }
     if (fsSupported()) {
       showToast("저장할 폴더를 선택하세요…");
       const r = await saveToFolder("review.md", md, shots);
@@ -454,6 +503,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           onDownloadMd={downloadMd}
           onExportFiles={exportFilesWithShots}
           onClearAll={clearAll}
+          pendingShots={pendingShots}
           onClose={() => setPanelOpen(false)}
           onHide={() => {
             if (
@@ -900,6 +950,7 @@ function Panel({
   onDownloadMd,
   onExportFiles,
   onClearAll,
+  pendingShots,
   onClose,
   onHide,
 }: {
@@ -916,6 +967,7 @@ function Panel({
   onDownloadMd: () => void;
   onExportFiles: () => void;
   onClearAll: () => void;
+  pendingShots: number;
   onClose: () => void;
   onHide: () => void;
 }) {
@@ -930,6 +982,12 @@ function Panel({
     ? allComments.filter((c) => !c.resolved).length
     : allComments.length;
   const shotCount = filtered.filter((c) => c.shot).length;
+  const exportHint =
+    pendingShots > 0
+      ? `스크린샷 ${pendingShots}장 처리 중`
+      : shotCount > 0
+        ? `이미지 ${shotCount}장 포함`
+        : `${totalForExport}개${hideResolved ? " · 미해결만" : ""}`;
 
   return (
     <div className="rv-card rv-panel">
@@ -1000,22 +1058,22 @@ function Panel({
             📋 MD 복사
           </button>
           <button className="rv-btn rv-btn-ghost" onClick={onDownloadMd}>
-            ⬇ MD
+            ⬇ 다운로드
           </button>
-          <span className="rv-export-hint">
-            {totalForExport}개{hideResolved ? " · 미해결만" : ""}
-          </span>
+          <span className="rv-export-hint">{exportHint}</span>
         </div>
-        {shotCount > 0 ? (
+        {shotCount > 0 || pendingShots > 0 ? (
           <div className="rv-export-row" style={{ marginTop: "6px" }}>
             <button
               className="rv-btn rv-btn-ghost"
               style={{ flex: "1" }}
               onClick={onExportFiles}
             >
-              🖼 스크린샷 포함 내보내기
+              🗂 폴더로 저장
             </button>
-            <span className="rv-export-hint">이미지 {shotCount}장</span>
+            <span className="rv-export-hint">
+              {pendingShots > 0 ? "처리 완료 후 저장" : `이미지 ${shotCount}장`}
+            </span>
           </div>
         ) : null}
       </div>
