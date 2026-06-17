@@ -226,7 +226,7 @@
           <li>리뷰어에게 <b>초대 링크</b>를 공유:</li>
         </ol>
         <div class="snippet">
-          <code id="snip-link">https://내서비스.com/?review=1</code>
+          <code id="snip-link">https://내서비스.com/?review=홍길동</code>
           <button class="copy" data-copy="#snip-link">복사</button>
         </div>
 
@@ -239,13 +239,13 @@
 1. 앱 최상위 레이아웃의 &lt;body&gt; 끝에 한 줄 추가(이미 있으면 생략):
    &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@main/dist/widget.js" defer&gt;&lt;/script&gt;
    (Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html)
-2. 위젯은 ?review=1 링크를 연 브라우저에만 보이고 일반 사용자에겐 안 보인다는 점 반영.
-3. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=1 를 알려줘.</pre>
+2. 위젯은 ?review=&lt;리뷰어이름&gt; 링크로 들어왔을 때만 보이고 일반 사용자에겐 안 보인다는 점 반영.
+3. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=&lt;리뷰어이름&gt; 를 알려줘.</pre>
           <button class="copy" data-copy="#snip-prompt" style="flex-shrink:0">복사</button>
         </div>
 
         <ul class="clean" style="margin-top:12px">
-          <li>초대 링크를 한 번 연 브라우저에만 위젯이 뜹니다. <b>일반 사용자는 못 봅니다.</b></li>
+          <li><code>?review=이름</code> 초대 링크로 들어왔을 때만 위젯 입장 화면이 뜹니다. <b>일반 사용자는 못 봅니다.</b></li>
           <li>리뷰는 <b>모두 같은 URL</b>에서 (코멘트는 도메인별 localStorage에 저장됨).</li>
           <li>서로의 코멘트는 보이지 않습니다 — 각자 MD로 내보내 합칩니다.</li>
         </ul>

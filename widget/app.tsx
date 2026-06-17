@@ -10,8 +10,8 @@ export interface AppProps {
   onHide: () => void;
   // ?review 최초 진입 시 잠금 상태(공용 비밀번호 입력 필요)
   locked: boolean;
-  // 공용 비밀번호 통과 시 호출 — rv:enabled 영속 저장
-  onUnlock: () => void;
+  // ?review=<이름>에서 읽은 이름. 있으면 잠금 화면 이름 입력칸에 우선 표시한다.
+  initialName: string;
 }
 
 // 공용 접근 비밀번호(공유 시크릿). 번들에 포함되므로 암호학적 보안이 아니라
@@ -77,7 +77,7 @@ function downloadText(filename: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
+export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [locked, setLocked] = useState(initialLocked);
   const [path, setPath] = useState(location.pathname);
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
@@ -88,7 +88,9 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
     null,
   );
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [name, setNameState] = useState(store.getName());
+  const [name, setNameState] = useState(
+    () => initialName.trim() || store.getName(),
+  );
   const [hideResolved, setHideResolved] = useState(false);
   const [, setTick] = useState(0); // 레이아웃 변화 시 핀 재배치용
   const [toast, setToast] = useState<string | null>(null);
@@ -188,7 +190,6 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
           initialName={name}
           onUnlock={(nick) => {
             setName(nick);
-            onUnlock();
             setLocked(false);
             setPanelOpen(true); // 첫 진입 시 위젯을 펼친 활성 상태로
           }}
@@ -397,7 +398,7 @@ export function App({ onHide, locked: initialLocked, onUnlock }: AppProps) {
           onHide={() => {
             if (
               window.confirm(
-                "위젯을 닫습니다. 코멘트는 그대로 저장돼 있어요. 다시 보려면 초대 링크(?review=1)로 들어오거나 북마클릿을 클릭하세요. 계속할까요?",
+                "위젯을 닫습니다. 코멘트는 그대로 저장돼 있어요. 다시 보려면 초대 링크(?review=이름)로 들어오거나 북마클릿을 클릭하세요. 계속할까요?",
               )
             ) {
               onHide();

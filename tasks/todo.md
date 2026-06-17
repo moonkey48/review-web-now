@@ -86,3 +86,30 @@
       빌드가 widget.js를 스킬 폴더에 동기화. 다른 프로젝트에선 폴더를 ~/.claude/skills/로 복사해 사용.
 - [x] 검증: 빌드→스킬 widget.js 동기화 OK, 프롬프트 복사 버튼이 전체 프롬프트 정확히 복사(스파이).
 - [x] 스테일 `pnpm-workspace.yaml` 제거(빌드 승인은 package.json `pnpm.onlyBuiltDependencies`로). clean install 확인.
+
+## 9. `?review=<이름>` 초대 링크 동작 수정
+
+요구사항:
+- `review` 쿼리 뒤의 값을 잠금 팝업의 이름 입력칸에 자동 채움.
+- 스크립트 태그 모드에서는 URL에 `review` 쿼리가 있을 때만 리뷰 입장 화면을 노출.
+- 기존 `rv:enabled` 저장값만으로 일반 URL에서 위젯/입장 화면이 자동 표시되지 않게 함.
+
+계획:
+- [x] `widget/index.tsx` 게이트를 `review` 쿼리 존재 여부 중심으로 단순화
+- [x] `review` 쿼리 값을 디코딩/정리해 `App` → `Lock` 초기 이름으로 전달
+- [x] 잠금 해제 시 `rv:enabled`을 더 이상 쓰지 않도록 정리
+- [x] README의 초대 링크/재방문 설명을 새 동작에 맞게 수정
+- [x] `pnpm typecheck`, `pnpm test`, `pnpm build` 검증
+
+검토:
+- `?review=<이름>` 값을 `parseReviewInvite()`로 읽어 잠금 화면 이름 초기값에 우선 적용.
+- 기존 `rv:enabled` 기반 자동 노출을 제거해 스크립트 태그 모드는 URL에 `review` 쿼리가 있을 때만 마운트.
+- README, 설치 페이지, Claude Code 설치 스킬 안내를 `?review=<리뷰어이름>` 기준으로 갱신.
+- `tasks/lessons.md`에 review 쿼리 기반 노출 규칙과 이름 자동 채움 규칙 기록.
+- 검증:
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 28 passed, 0 failed
+  - `pnpm build` 통과: `dist/widget.js`, `dist/index.html`, `.claude/skills/reviewer-install/widget.js` 생성
+  - headless Chrome smoke:
+    - `file:///private/tmp/reviewer-gate.html` + `rv:enabled=1` → `host=0`
+    - `file:///private/tmp/reviewer-gate.html?review=홍길동` → `host=1`, `name=홍길동`

@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { App } from "./app";
 import { HOST_ID } from "./anchor";
+import { parseReviewInvite } from "./reviewGate";
 
 // ───────────────────────────────────────────────────────────
 // Reviewer 위젯 부트스트랩 (로컬 전용 · 백엔드 없음)
@@ -9,7 +10,7 @@ import { HOST_ID } from "./anchor";
 //  1) 북마클릿 / 데모: window.__RV_FORCE__ = 1 로 게이트를 건너뛰고 항상 마운트.
 //     북마클릿 재클릭 시 토글로 꺼진다.
 //  2) <script src=".../widget.js"> 태그: 게이트가 걸린다.
-//     ?review 링크를 거친 브라우저(localStorage rv:enabled=1)에만 마운트.
+//     현재 URL에 ?review 쿼리가 있을 때만 마운트한다.
 //     일반 사용자는 렌더도 아무것도 하지 않는다.
 //
 // 모든 코멘트는 그 사이트 origin의 localStorage에만 저장된다. 네트워크 요청 0.
@@ -23,50 +24,20 @@ declare global {
   }
 }
 
-const KEY_ENABLED = "rv:enabled";
-
-function safeGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function safeSet(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* private 모드 등 — 무시 */
-  }
-}
-function safeRemove(key: string) {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    /* noop */
-  }
-}
-
 // 노출 게이트 + 잠금 여부.
 //  - 북마클릿/데모(__RV_FORCE__): 바로 표시, 비번 없음
-//  - 이미 잠금 해제된 리뷰어(rv:enabled): 바로 표시
-//  - ?review 최초 진입: 마운트하되 "잠금"(공용 비번 입력 화면) — 비번 통과 시에만 rv:enabled 저장
+//  - ?review 진입: 마운트하되 "잠금"(공용 비번 입력 화면)
+//    review 값은 이름 입력칸의 초기값으로 쓴다.
 //  - 그 외(일반 사용자): 아무것도 안 함
-function shouldMount(): { mount: boolean; locked: boolean } {
-  if (window.__RV_FORCE__) return { mount: true, locked: false };
-  if (safeGet(KEY_ENABLED) === "1") return { mount: true, locked: false };
-  try {
-    const url = new URL(location.href);
-    if (url.searchParams.has("review")) {
-      // 흔적은 즉시 제거. enabled는 비번 통과 후에만 저장한다(미통과 ?review는 영속 안 됨).
-      url.searchParams.delete("review");
-      history.replaceState(history.state, "", url.toString());
-      return { mount: true, locked: true };
-    }
-  } catch {
-    /* URL 파싱 실패 무시 */
+function shouldMount(): { mount: boolean; locked: boolean; initialName: string } {
+  if (window.__RV_FORCE__) {
+    return { mount: true, locked: false, initialName: "" };
   }
-  return { mount: false, locked: false };
+
+  const invite = parseReviewInvite(location.href);
+  if (invite) return { mount: true, locked: true, initialName: invite.name };
+
+  return { mount: false, locked: false, initialName: "" };
 }
 
 // pushState/replaceState 훅 — SPA 경로 변경을 위젯에 알린다.
@@ -91,7 +62,7 @@ function installHistoryHook() {
   };
 }
 
-function mount(locked: boolean) {
+function mount(locked: boolean, initialName: string) {
   installHistoryHook();
 
   const host = document.createElement("div");
@@ -103,16 +74,13 @@ function mount(locked: boolean) {
     render(null, shadow);
     host.remove();
     delete window.__REVIEWER__;
-    // 스크립트 태그 모드에서 "닫기" = 이 브라우저에서 끔(다시 ?review 링크 + 비번으로 켠다).
-    // 북마클릿 모드에선 플래그가 없으니 이 호출은 무해하다.
-    safeRemove(KEY_ENABLED);
   };
 
   render(
     <App
       onHide={remove}
       locked={locked}
-      onUnlock={() => safeSet(KEY_ENABLED, "1")}
+      initialName={initialName}
     />,
     shadow,
   );
@@ -125,11 +93,11 @@ function start() {
     window.__REVIEWER__.remove();
     return;
   }
-  const { mount: should, locked } = shouldMount(); // 게이트
+  const { mount: should, locked, initialName } = shouldMount(); // 게이트
   if (!should) return; // 초대받지 않은 사용자에겐 아무것도 안 함
   if (document.getElementById(HOST_ID)) return; // 방어적 중복 가드
   if (!document.body) return;
-  mount(locked);
+  mount(locked, initialName);
 }
 
 if (document.readyState === "loading") {

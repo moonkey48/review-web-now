@@ -13,7 +13,8 @@ await mkdir(tmp, { recursive: true });
 const entry = `
 import * as store from ${JSON.stringify(join(root, "widget/store.ts"))};
 import { buildMarkdown } from ${JSON.stringify(join(root, "widget/markdown.ts"))};
-export { store, buildMarkdown };
+import { parseReviewInvite } from ${JSON.stringify(join(root, "widget/reviewGate.ts"))};
+export { store, buildMarkdown, parseReviewInvite };
 `;
 const entryPath = join(tmp, "entry.ts");
 await writeFile(entryPath, entry, "utf8");
@@ -37,7 +38,9 @@ globalThis.localStorage = {
   clear: () => mem.clear(),
 };
 
-const { store, buildMarkdown } = await import(bundlePath + "?t=" + process.hrtime.bigint());
+const { store, buildMarkdown, parseReviewInvite } = await import(
+  bundlePath + "?t=" + process.hrtime.bigint()
+);
 
 let pass = 0;
 let fail = 0;
@@ -52,6 +55,18 @@ const ok = (cond, msg) => {
 store.clear();
 ok(store.listAll().length === 0, "초기 비어있음");
 ok(store.getName() === "", "이름 기본 빈문자열");
+
+ok(parseReviewInvite("https://x.test/") === null, "review 쿼리 없으면 초대 아님");
+ok(
+  parseReviewInvite("https://x.test/?review=%ED%99%8D%EA%B8%B8%EB%8F%99").name ===
+    "홍길동",
+  "review 쿼리 값을 이름으로 디코딩",
+);
+ok(
+  parseReviewInvite("https://x.test/?review=%20%EB%AF%BC%EC%88%98%20").name ===
+    "민수",
+  "review 이름 앞뒤 공백 정리",
+);
 
 store.setName("테스터");
 ok(store.getName() === "테스터", "이름 저장/조회");
