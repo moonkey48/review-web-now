@@ -113,3 +113,76 @@
   - headless Chrome smoke:
     - `file:///private/tmp/reviewer-gate.html` + `rv:enabled=1` → `host=0`
     - `file:///private/tmp/reviewer-gate.html?review=홍길동` → `host=1`, `name=홍길동`
+
+## 10. 핸드오프 정확도 — 텍스트 앵커 + 스크린샷 opt-in (추가 요청)
+
+배경: MD 리포트만 받았을 때 사람/Claude Code/Codex가 핀 위치를 정확히 재인지하도록.
+- 셀렉터(렌더 DOM)는 소스 레포에서 환원 불가 → **인용 텍스트 + 섹션 heading**을 같이 실어 grep 가능하게.
+- 스크린샷은 **기본 OFF · 작성 시 체크박스로 opt-in**. (사용자 합의)
+
+결정사항:
+- 저장: **A안 — File System Access(폴더 1회 선택 후 자동)**. 무팝업 Desktop 자동 저장은 웹 샌드박스 한계로 불가.
+- 캡처 라이브러리: **html2canvas CDN 지연 로드 + `window.__RV_H2C_URL__` 오버라이드**(자가호스트 시 네트워크 0).
+- blob은 **IndexedDB**(localStorage 용량 초과 사고 방지), 코멘트엔 메타(id·w·h)만.
+- 전달: FS Access 폴더에 `review.md` + `images/<id>.png`. 미지원 브라우저는 **의존성 0 store-zip** 다운로드.
+
+작업:
+- [x] `types.ts` — `Anchor.pin`에 `text?`/`heading?`, `Shot` 타입, `RvComment.shot?`
+- [x] `anchor.ts` — `buildAnchor`가 요소 텍스트(≤160자)+가까운 heading 캡처
+- [x] `shots.ts`(신규) — IndexedDB blob CRUD(put/get/delete/clear/getMany)
+- [x] `capture.ts`(신규) — html2canvas 지연 로드 + 요소→PNG blob (위젯 host 숨김)
+- [x] `exportFiles.ts`(신규) — FS Access 폴더 저장 + store-only zip 폴백
+- [x] `store.ts` — `setShot(id, shot)`
+- [x] `markdown.ts` — 섹션/인용/스크린샷(`![](images/..)`) 라인 추가
+- [x] `app.tsx` — Composer 스크린샷 체크박스(기본 OFF)·async 캡처·Detail 썸네일·Panel 폴더내보내기·삭제 시 blob 정리
+- [x] `styles.ts` — 체크박스·썸네일 스타일
+- [x] `selftest.mjs` — 섹션/인용/스크린샷 MD 단언 추가
+- [x] 검증: typecheck / test / build / 실브라우저 스모크
+
+검토:
+- 핸드오프 정확도: 핀에 `text`(인용)+`heading`(섹션)을 같이 저장해 MD에 노출 →
+  셀렉터가 깨져도 grep/검색으로 위치 재인지. `markdown.ts`가 `섹션:`/`인용:` 라인 추가.
+- 스크린샷(기본 OFF, 작성 폼 체크박스): 등록 후 비동기로 html2canvas 지연 로드 → 핀 요소만 PNG →
+  IndexedDB(`rv-shots`)에 blob, localStorage엔 메타(id·w·h)만. 삭제/전체삭제 시 blob도 정리.
+- 내보내기: `🖼 스크린샷 포함 내보내기` → FS Access 폴더(`review.md`+`images/<id>.png`) 우선,
+  미지원 시 의존성 0 store-zip 다운로드. MD는 `![#n](images/<id>.png)` 상대경로 참조.
+- 결정/한계:
+  - 무팝업 Desktop 자동 저장은 웹 샌드박스상 불가 → FS Access 폴더 1회 선택(세션 유지)으로 실현.
+  - html2canvas는 번들에 넣으면 북마클릿 초과 → CDN 지연 로드(+`__RV_H2C_URL__` 자가호스트 오버라이드).
+  - 번들 41.1→54.4KB, 북마클릿 60.3→**79.4KB**(64KB Safari 주의선 초과). 스크립트태그 설치엔 영향 없음.
+- 검증:
+  - `pnpm typecheck` 통과 (Uint8Array<ArrayBuffer> 제네릭 1건 수정)
+  - `pnpm test` 통과: **32 passed, 0 failed** (섹션/인용/스크린샷 단언 포함)
+  - `pnpm build` 3종 산출
+  - 실브라우저(Chrome) 스모크: 콘솔 에러 0 · 핀 text/heading 캡처 ·
+    html2canvas CDN 로드 · 실 PNG(1337B, magic 검증) IndexedDB 저장 ·
+    shot 메타 localStorage 반영 · 패널 `스크린샷 포함 내보내기`(이미지 1장) · `showDirectoryPicker` 지원 확인
+
+## 11. 다층 중복 앵커 (즉시·번들 0) — 리서치 권고 도입
+
+배경: 리서치 워크플로(23 에이전트) 권고 — 단일 셀렉터가 아닌 "다층 중복 앵커"로 위치 표현.
+북마클릿은 raw 바이트를 싣어 라이브러리 정적 포함 금지 → 순수 DOM/문자열 자체 구현만 "즉시" 채택.
+
+- [x] `types.ts` — `Anchor`에 `quote{exact,prefix,suffix}`·`a11y{role,name}`·`deepLink`, (기존 `text`→`quote` 마이그레이션)
+- [x] `anchor.ts` — ① TextQuoteSelector(Range로 앞뒤 ±32자) ② role+accessible name 미니구현 ④ Text Fragment 딥링크. 모두 의존성 0
+- [x] `markdown.ts` — 섹션/요소(역할·이름)/인용(exact+맥락)/위치/딥링크/스크린샷 순 + 상단 해석 가이드
+- [x] `capture.ts` — ⑧ 부모 contextRoot 캡처 + 빨강 박스·번호 배지 주석(흰 halo 대비)
+- [x] `app.tsx` — 캡처 시 핀 번호 배지 전달
+- [x] `selftest.mjs` — 요소/인용(맥락)/딥링크/fallback/가이드 단언
+- [x] 검증: typecheck · test(37/37) · build · 실브라우저 스모크
+  - 실 `<button>`에서 a11y{role:button,name:결제하기}·quote(exact+prefix/suffix)·deepLink·heading 생성 확인
+  - 스크린샷이 부모 카드 맥락 + 빨강 박스·"1" 배지로 주석돼 IndexedDB 저장됨(시각 확인)
+  - **버그 발견·수정**: html2canvas 반환 캔버스 직접 드로잉이 export에 반영 안 됨 → 새 캔버스 drawImage 복사 후 주석
+- [x] 적대적 코드리뷰 워크플로(31 에이전트·4차원→발견별 검증): 발견 27건 중 **검증된 진짜 버그 18건** → 17건 수정
+
+### 리뷰 반영 (수정한 버그)
+- **마크다운 인젝션/이스케이프(최다·핵심)**: 페이지 파생 텍스트(인용 exact/prefix/suffix·a11y name·heading)와 page를 `escMd()`로 메타문자 무력화, 딥링크 URL은 `escUrl()`로 괄호 인코딩. → 핀한 콘텐츠가 리포트에서 링크/이미지/구조로 해석되는 것 차단(`markdown.ts`). selftest 인젝션 단언 5건 추가.
+- **SPA 캡처 레이스(`app.tsx`)**: 캡처 시작 시점에 path·badge 고정, await 후 `pathRef!==capturePath || !target.isConnected`면 첨부 스킵 → 옛 노드/엉뚱한 페이지 첨부·잘못된 배지 방지.
+- **`putShot` 실패 은폐(`shots.ts`/`app.tsx`)**: boolean 반환 → 실패 시 메타 저장 안 하고 토스트 → 깨진 `![](images/..)` 참조 방지.
+- **`contextAround`(`anchor.ts`)**: el이 section/article 자체일 때 Range 경계 역전 → 조상에서만 컨테이너 탐색 + 가드.
+- **`accName`(`anchor.ts`)**: `input[type=image]` alt 누락 보강, 컨테이너 역할(nav/list 등)은 자손 텍스트를 이름으로 안 씀.
+- **`nearestHeading`**: 형제 서브트리에서 핀에 가까운 '마지막' heading 선택.
+- **`textFragmentLink`**: exact 말줄임(…) 제거 후 fragment 생성.
+- **`contextRoot`/`annotate`(`capture.ts`)**: width/inline/el-꽉참 가드 + 박스 좌표 캔버스 경계 clamp.
+- 보류(저영향 엣지): 스크린샷 배지 번호 삭제 후 UI와 드리프트(래스터 고착·본질적), zip64 4GB 한계.
+- 검증: typecheck · **selftest 42/42** · build · 실브라우저 재검(앵커 생성·스크린샷 박스·배지 무회귀 확인)

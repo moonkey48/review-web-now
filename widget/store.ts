@@ -1,6 +1,6 @@
 // localStorage 단일 저장소. 대상 사이트 origin 기준으로 코멘트가 쌓인다.
 // 서버/네트워크 없음 — 모든 읽기/쓰기는 동기.
-import type { Anchor, RvComment } from "./types";
+import type { Anchor, RvComment, Shot } from "./types";
 
 const KEY = "rv:comments";
 const KEY_NAME = "rv:name";
@@ -106,6 +106,15 @@ export function update(
     next.resolvedAt = patch.resolved ? nowIso() : null;
   }
   all[i] = next;
+  persist(all);
+}
+
+// 스크린샷 메타만 갱신(실제 blob은 IndexedDB). null이면 첨부 해제.
+export function setShot(id: string, shot: Shot | null): void {
+  const all = loadAll();
+  const i = all.findIndex((c) => c.id === id);
+  if (i < 0) return;
+  all[i] = { ...all[i], shot, updatedAt: nowIso() };
   persist(all);
 }
 

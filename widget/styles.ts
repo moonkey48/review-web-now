@@ -166,6 +166,17 @@ input, textarea { font: inherit; color: inherit; }
 .rv-composer { width: 290px; padding: 12px; }
 .rv-composer .rv-textarea { margin-top: 8px; }
 .rv-composer .rv-row-end { margin-top: 8px; }
+.rv-shot-check {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 12px; color: #52525b; cursor: pointer; user-select: none;
+}
+.rv-shot-check input { width: 14px; height: 14px; cursor: pointer; accent-color: #6366f1; }
+
+/* ── 스크린샷 썸네일 (스레드 팝업) ── */
+.rv-shot-thumb {
+  display: block; margin-top: 8px; max-width: 100%;
+  border: 1px solid #e4e4e7; border-radius: 8px; background: #fff;
+}
 
 /* ── 스레드 팝업 ────────────────────────────── */
 .rv-thread { width: 320px; max-height: min(480px, 72vh); display: flex; flex-direction: column; }

@@ -76,7 +76,16 @@ const c1 = store.create({
   pageUrl: "http://x/pricing",
   body: "결제 버튼 색이 비활성처럼 보여요",
   authorName: "테스터",
-  anchor: { type: "pin", selector: "#checkout-btn", xPercent: 50, yPercent: 50 },
+  anchor: {
+    type: "pin",
+    selector: "#checkout-btn",
+    xPercent: 50,
+    yPercent: 50,
+    quote: { exact: "결제 버튼 영역 텍스트", prefix: "여기 ", suffix: " 영역" },
+    a11y: { role: "button", name: "결제하기" },
+    heading: "결제 안내",
+    deepLink: "https://x/pricing#:~:text=%EA%B2%B0%EC%A0%9C",
+  },
 });
 ok(!!c1.id && !!c1.createdAt && c1.resolved === false, "create: id/ts/기본 미해결");
 
@@ -92,7 +101,14 @@ const c3 = store.create({
   pageUrl: "http://x/home",
   body: "홈 히어로 위치 확인",
   authorName: "민수",
-  anchor: { type: "pin", selector: ".hero h1", xPercent: 10, yPercent: 90 },
+  anchor: {
+    type: "pin",
+    selector: ".hero h1",
+    xPercent: 10,
+    yPercent: 90,
+    quote: { exact: "홈 히어로 제목" },
+    a11y: { role: "heading" },
+  },
 });
 
 ok(store.listAll().length === 3, "전체 3개");
@@ -107,6 +123,10 @@ ok(c2u.resolved === true && c2u.resolvedAt !== null, "resolve 토글 + resolvedA
 store.update(c1.id, { body: "수정된 본문" });
 ok(store.listAll().find((c) => c.id === c1.id).body === "수정된 본문", "본문 수정");
 
+store.setShot(c1.id, { id: c1.id, w: 400, h: 200 });
+const c1s = store.listAll().find((c) => c.id === c1.id);
+ok(c1s.shot && c1s.shot.id === c1.id, "setShot: 스크린샷 메타 첨부");
+
 const gen = new Date("2026-06-14T01:30:00Z"); // KST 10:30
 const mdAll = buildMarkdown("데모 사이트", store.listAll(), { status: "all", generatedAt: gen });
 ok(mdAll.includes("# 리뷰 리포트 — 데모 사이트"), "MD 제목");
@@ -120,10 +140,55 @@ ok(mdAll.includes("   둘째 줄도 있음"), "MD 다중행 본문 들여쓰기 
 ok(!mdAll.includes("### "), "MD 코멘트별 제목 없음");
 ok(mdAll.includes("위치: `/pricing`"), "MD 코멘트별 경로 포함");
 ok(mdAll.includes("위치: `/home`"), "MD 코멘트별 경로 포함(다른 페이지)");
+ok(mdAll.includes("섹션: 결제 안내"), "MD 섹션(heading) 라인");
+ok(mdAll.includes('요소(역할/이름): `button` / "결제하기"'), "MD 요소 역할/이름 라인");
+ok(mdAll.includes("인용: …여기 **[결제 버튼 영역 텍스트]** 영역…"), "MD 인용 exact+앞뒤맥락 라인(trim)");
+ok(mdAll.includes('인용: "홈 히어로 제목"'), "MD 인용 fallback(맥락 없을 때 따옴표)");
+ok(mdAll.includes("요소(역할/이름): `heading`"), "MD 요소 역할만 있는 경우");
+ok(
+  mdAll.includes("딥링크: [위치 열기](https://x/pricing#:~:text="),
+  "MD 딥링크 라인",
+);
+ok(mdAll.includes(`스크린샷: ![#`) && mdAll.includes(`images/${c1.id}.png`), "MD 스크린샷 상대경로 참조");
+ok(mdAll.includes("으로 위치를 중복 표기합니다"), "MD 상단 해석 가이드");
 
 const mdOpen = buildMarkdown("데모 사이트", store.listAll(), { status: "open" });
 ok(!mdOpen.includes("[x]"), "open 필터: 해결됨 제외");
 ok(mdOpen.includes("미해결만 표시"), "open 필터 표기");
+
+// 마크다운 인젝션 방지 — 페이지/사용자 파생 텍스트가 링크·이미지로 해석되지 않아야 한다.
+const inj = buildMarkdown(
+  "x",
+  [
+    {
+      id: "i1",
+      pagePath: "/p",
+      pageUrl: "http://x/p",
+      anchor: {
+        type: "pin",
+        selector: "#z",
+        xPercent: 0,
+        yPercent: 0,
+        quote: { exact: "click ](http://evil)" },
+        a11y: { role: "button", name: "x[y](z)" },
+        heading: "a]b!",
+        deepLink: "http://x/a(b)?r=(1)#:~:text=q",
+      },
+      body: "본문",
+      authorName: "t",
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-17T00:00:00Z",
+      updatedAt: "2026-06-17T00:00:00Z",
+    },
+  ],
+  { status: "all", generatedAt: gen },
+);
+ok(!inj.includes("](http://evil)"), "MD 인젝션: 인용 안의 ](url) 비활성화");
+ok(inj.includes("click \\]\\(http://evil\\)"), "MD 인젝션: exact 메타문자 백슬래시 이스케이프");
+ok(!inj.includes("[y](z)"), "MD 인젝션: a11y name 링크 비활성화");
+ok(inj.includes("섹션: a\\]b\\!"), "MD 인젝션: heading 이스케이프");
+ok(!inj.includes("a(b)?r=(1)") && inj.includes("a%28b%29"), "MD 인젝션: 딥링크 URL 괄호 인코딩");
 
 store.remove(c3.id);
 ok(store.listAll().length === 2, "remove 동작");
