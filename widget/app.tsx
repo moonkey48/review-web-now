@@ -3,6 +3,9 @@ import { buildAnchor, pickElement, resolveAnchor, scrollToAnchor } from "./ancho
 import { CSS_TEXT } from "./styles";
 import * as store from "./store";
 import { buildMarkdown } from "./markdown";
+import { captureElement } from "./capture";
+import { clearShots, deleteShot, getShot, getShots, putShot } from "./shots";
+import { downloadZip, fsSupported, saveToFolder } from "./exportFiles";
 import type { Anchor, RvComment } from "./types";
 
 export interface AppProps {
@@ -222,21 +225,54 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     setMode(false);
   };
 
-  const submitDraft = (text: string, author: string) => {
+  const submitDraft = async (text: string, author: string, shoot: boolean) => {
     if (!draft) return;
     const an = author.trim() || "익명";
     if (an !== name) setName(an);
-    store.create({
+    const anchor = draft.anchor;
+    // 캡처 대상 요소는 draft를 비우기 전에 미리 잡아둔다(핀 모드일 때만).
+    let target: Element | null = null;
+    if (shoot && anchor.type === "pin") {
+      try {
+        target = document.querySelector(anchor.selector);
+      } catch {
+        target = null;
+      }
+    }
+    const c = store.create({
       pagePath: pathRef.current,
       pageUrl: location.href,
       body: text,
       authorName: an,
-      anchor: draft.anchor,
+      anchor,
     });
     setDraft(null);
     bumpData();
     // 연속 코멘트 모드: 한 건 남겨도 곧장 다음 위치를 찍을 수 있게 모드를 되살린다
     if (sticky) setMode(true);
+    // 스크린샷은 등록 후 비동기로 첨부(html2canvas 지연 로드 → IndexedDB)
+    if (target) {
+      // 캡처 시작 시점의 경로·배지 번호를 고정(await 중 SPA 이동 대비)
+      const capturePath = pathRef.current;
+      const badge = store.list(capturePath).length; // 작성 순번 — 스크린샷 배지
+      showToast("스크린샷 캡처 중…");
+      try {
+        const cap = await captureElement(target, { badge });
+        if (pathRef.current !== capturePath || !target.isConnected) {
+          // 캡처 도중 SPA 이동/요소 분리 — 엉뚱한 페이지에 첨부하지 않고 조용히 스킵
+        } else if (!cap) {
+          showToast("스크린샷 캡처 실패");
+        } else if (await putShot(c.id, cap.blob)) {
+          store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
+          bumpData();
+          showToast("스크린샷을 첨부했어요");
+        } else {
+          showToast("스크린샷 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+        }
+      } catch {
+        showToast("스크린샷 캡처 실패 — 네트워크/CSP를 확인하세요");
+      }
+    }
   };
 
   // 작성 폼 취소 — 연속 모드면 오버레이로 돌아가 다시 위치를 고를 수 있게 한다
@@ -280,11 +316,34 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     showToast("review-*.md 다운로드를 시작했어요");
   };
 
+  // 스크린샷 포함 내보내기 — 폴더 저장(FS Access) 우선, 미지원/실패 시 zip 폴백.
+  const exportFilesWithShots = async () => {
+    const all = store.listAll();
+    const md = buildMarkdown(SITE_TITLE, all, { status: exportStatus });
+    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
+    const shots = await getShots(
+      visible.filter((c) => c.shot).map((c) => c.shot!.id),
+    );
+    if (fsSupported()) {
+      showToast("저장할 폴더를 선택하세요…");
+      const r = await saveToFolder("review.md", md, shots);
+      if (r === "ok") {
+        showToast(`폴더에 저장했어요 · 이미지 ${shots.size}장`);
+        return;
+      }
+      if (r === "cancel") return; // 사용자가 선택을 취소
+      // unsupported/error → zip 폴백
+    }
+    await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
+    showToast(`zip으로 내보냈어요 · 이미지 ${shots.size}장`);
+  };
+
   const clearAll = () => {
     if (!window.confirm("이 사이트의 모든 코멘트를 삭제할까요? 되돌릴 수 없습니다.")) {
       return;
     }
     store.clear();
+    clearShots(); // IndexedDB 스크린샷도 함께 정리
     setActiveId(null);
     bumpData();
     showToast("모든 코멘트를 삭제했어요");
@@ -393,6 +452,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           onGoTo={goTo}
           onCopyMd={copyMd}
           onDownloadMd={downloadMd}
+          onExportFiles={exportFilesWithShots}
           onClearAll={clearAll}
           onClose={() => setPanelOpen(false)}
           onHide={() => {
@@ -599,18 +659,19 @@ function Composer({
   y: number;
   isPage: boolean;
   name: string;
-  onSubmit: (text: string, author: string) => void;
+  onSubmit: (text: string, author: string, shoot: boolean) => void;
   onCancel: () => void;
 }) {
   const [text, setText] = useState("");
   const [author, setAuthor] = useState(name);
+  const [shoot, setShoot] = useState(false); // 스크린샷 첨부 — 기본 OFF
   const place = clampPos(x + 10, y + 10, 290, 230);
 
   const submit = () => {
     const t = text.trim();
     const a = author.trim();
     if (!t || !a) return;
-    onSubmit(t, a);
+    onSubmit(t, a, !isPage && shoot);
   };
 
   return (
@@ -653,6 +714,18 @@ function Composer({
           }
         }}
       />
+      {!isPage ? (
+        <label className="rv-shot-check">
+          <input
+            type="checkbox"
+            checked={shoot}
+            onChange={(e: Event) =>
+              setShoot((e.currentTarget as HTMLInputElement).checked)
+            }
+          />
+          📷 스크린샷 첨부
+        </label>
+      ) : null}
       <div className="rv-row-end">
         <button className="rv-btn rv-btn-ghost" onClick={onCancel}>
           취소
@@ -709,6 +782,7 @@ function Detail({
   const del = () => {
     if (window.confirm("이 코멘트를 삭제할까요?")) {
       store.remove(comment.id);
+      if (comment.shot) deleteShot(comment.id); // IndexedDB 스크린샷도 정리
       onClose();
       onChanged();
     }
@@ -783,10 +857,32 @@ function Detail({
           ) : (
             <div className="rv-msg-text">{comment.body}</div>
           )}
+          {!editing && comment.shot ? <ShotThumb id={comment.shot.id} /> : null}
         </div>
       </div>
     </div>
   );
+}
+
+/* ── 스크린샷 썸네일 (IndexedDB에서 blob 로드) ── */
+function ShotThumb({ id }: { id: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let made: string | null = null;
+    getShot(id).then((blob) => {
+      if (blob && alive) {
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      }
+    });
+    return () => {
+      alive = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [id]);
+  if (!url) return null;
+  return <img className="rv-shot-thumb" src={url} alt="첨부된 스크린샷" />;
 }
 
 /* ── 패널 ─────────────────────────────────────── */
@@ -802,6 +898,7 @@ function Panel({
   onGoTo,
   onCopyMd,
   onDownloadMd,
+  onExportFiles,
   onClearAll,
   onClose,
   onHide,
@@ -817,6 +914,7 @@ function Panel({
   onGoTo: (c: RvComment) => void;
   onCopyMd: () => void;
   onDownloadMd: () => void;
+  onExportFiles: () => void;
   onClearAll: () => void;
   onClose: () => void;
   onHide: () => void;
@@ -831,6 +929,7 @@ function Panel({
   const totalForExport = hideResolved
     ? allComments.filter((c) => !c.resolved).length
     : allComments.length;
+  const shotCount = filtered.filter((c) => c.shot).length;
 
   return (
     <div className="rv-card rv-panel">
@@ -901,12 +1000,24 @@ function Panel({
             📋 MD 복사
           </button>
           <button className="rv-btn rv-btn-ghost" onClick={onDownloadMd}>
-            ⬇ 다운로드
+            ⬇ MD
           </button>
           <span className="rv-export-hint">
             {totalForExport}개{hideResolved ? " · 미해결만" : ""}
           </span>
         </div>
+        {shotCount > 0 ? (
+          <div className="rv-export-row" style={{ marginTop: "6px" }}>
+            <button
+              className="rv-btn rv-btn-ghost"
+              style={{ flex: "1" }}
+              onClick={onExportFiles}
+            >
+              🖼 스크린샷 포함 내보내기
+            </button>
+            <span className="rv-export-hint">이미지 {shotCount}장</span>
+          </div>
+        ) : null}
       </div>
 
       {editingName ? (
