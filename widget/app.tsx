@@ -1056,7 +1056,8 @@ interface VerProps {
 }
 
 function VersionBar({ ver }: { ver: VerProps }) {
-  const [draft, setDraft] = useState(""); // 새 버전 입력(현재 버전과 분리 — 추가 전용)
+  const [open, setOpen] = useState(false); // 버전 관리는 기본 접힘 — 코멘트가 패널 위로 오게
+  const [draft, setDraft] = useState(""); // 새 버전 입력(추가 전용)
 
   // 입력값을 새 버전으로 추가하고 현재 작성 버전으로 전환(등록·표시 포함). 이미 있는 라벨이면 그 버전으로 전환.
   const add = () => {
@@ -1066,82 +1067,99 @@ function VersionBar({ ver }: { ver: VerProps }) {
     setDraft("");
   };
 
+  const shown = ver.all.filter((v) => ver.visible.has(v)).length;
+
   return (
-    <div className="rv-verbar">
-      {/* 현재 작성 버전 — 색 칩으로 표시(읽기 전용) */}
-      <div className="rv-ver-current">
-        <span className="rv-ver-clabel">현재 작성 버전</span>
-        <span className="rv-ver-chip">
-          <span
-            className="rv-ver-swatch"
-            style={{ ["--rv-c" as any]: ver.colorFor(ver.current) }}
-          />
-          <span className="rv-ver-chip-name" title={ver.current}>
-            {ver.current}
-          </span>
-        </span>
-      </div>
-
-      {/* 새 버전 추가 — 명시 버튼 */}
-      <div className="rv-ver-add">
-        <input
-          className="rv-input rv-ver-input"
-          list="rv-ver-list"
-          placeholder="새 버전 (예: v2 · 0.0.1 · 2026-06-18)"
-          value={draft}
-          onInput={(e: Event) =>
-            setDraft((e.currentTarget as HTMLInputElement).value)
-          }
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
+    <div className={`rv-verbar${open ? " rv-open" : ""}`}>
+      {/* 접힌 요약 — 평소엔 이 한 줄만. 클릭하면 펼침(코멘트가 패널의 주인이 되게). */}
+      <button
+        className="rv-ver-summary"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span
+          className="rv-ver-swatch"
+          style={{ ["--rv-c" as any]: ver.colorFor(ver.current) }}
         />
-        <datalist id="rv-ver-list">
-          {ver.known.map((v) => (
-            <option key={v} value={v} />
-          ))}
-        </datalist>
-        <button
-          className="rv-btn rv-btn-primary rv-ver-addbtn"
-          disabled={!draft.trim()}
-          onClick={add}
-        >
-          + 추가
-        </button>
-      </div>
+        <span className="rv-ver-summary-cur" title={ver.current}>
+          버전 {ver.current}
+        </span>
+        <span className="rv-ver-summary-meta">
+          {shown}/{ver.all.length} 표시
+        </span>
+        <span className="rv-ver-caret">▾</span>
+      </button>
 
-      <div className="rv-ver-toolbar">
-        <span className="rv-ver-hint">표시할 버전</span>
-        <button className="rv-ver-mini" onClick={ver.showAll}>
-          전체
-        </button>
-        <button className="rv-ver-mini" onClick={ver.showOnlyCurrent}>
-          현재만
-        </button>
-      </div>
-      <div className="rv-verlist">
-        {ver.all.map((v) => (
-          <label key={v} className="rv-ver-row">
+      {open ? (
+        <div className="rv-ver-body">
+          {/* 새 버전 추가 */}
+          <div className="rv-ver-add">
             <input
-              type="checkbox"
-              checked={ver.visible.has(v)}
-              onChange={() => ver.toggle(v)}
+              className="rv-input rv-ver-input"
+              list="rv-ver-list"
+              placeholder="새 버전 (예: v2 · 0.0.1)"
+              value={draft}
+              onInput={(e: Event) =>
+                setDraft((e.currentTarget as HTMLInputElement).value)
+              }
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  add();
+                }
+              }}
             />
-            <span
-              className="rv-ver-swatch"
-              style={{ ["--rv-c" as any]: ver.colorFor(v) }}
-            />
-            <span className="rv-ver-name" title={v}>
-              {v}
-            </span>
-            {v === ver.current ? <span className="rv-ver-now">현재</span> : null}
-            <span className="rv-ver-count">{ver.counts.get(v) ?? 0}</span>
-          </label>
-        ))}
-      </div>
+            <datalist id="rv-ver-list">
+              {ver.known.map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
+            <button
+              className="rv-btn rv-btn-primary rv-ver-addbtn"
+              disabled={!draft.trim()}
+              onClick={add}
+            >
+              + 추가
+            </button>
+          </div>
+
+          {/* 표시 토글 — 행의 색 스와치 자체가 on/off */}
+          <div className="rv-ver-toolbar">
+            <span className="rv-ver-hint">표시</span>
+            <button className="rv-ver-mini" onClick={ver.showAll}>
+              전체
+            </button>
+            <button className="rv-ver-mini" onClick={ver.showOnlyCurrent}>
+              현재만
+            </button>
+          </div>
+          <div className="rv-verlist">
+            {ver.all.map((v) => {
+              const on = ver.visible.has(v);
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  className={`rv-ver-row${on ? "" : " rv-ver-off"}`}
+                  aria-pressed={on}
+                  title={`${v} — ${on ? "표시 중 (클릭해 숨기기)" : "숨김 (클릭해 표시)"}`}
+                  onClick={() => ver.toggle(v)}
+                >
+                  <span
+                    className="rv-ver-swatch"
+                    style={{ ["--rv-c" as any]: ver.colorFor(v) }}
+                  />
+                  <span className="rv-ver-name">{v}</span>
+                  <span className="rv-ver-count">{ver.counts.get(v) ?? 0}</span>
+                  {v === ver.current ? (
+                    <span className="rv-ver-now">현재</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
