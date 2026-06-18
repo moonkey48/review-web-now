@@ -720,6 +720,12 @@ function Composer({
   // 스크린샷 첨부 — 기본 OFF. 단 빈 요소(텍스트·이름 없음)는 스크린샷이 사실상 유일한 단서라 기본 ON(자동 캡처는 아님 — 등록 시 동의된 캡처만).
   const [shoot, setShoot] = useState(needsShot);
   const place = clampPos(x + 10, y + 10, 290, 230);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // Shadow DOM에선 autoFocus 속성이 신뢰성이 낮아, 마운트 후 코멘트 입력칸에 명시적으로 포커스한다.
+  useEffect(() => {
+    textRef.current?.focus();
+  }, []);
 
   const submit = () => {
     const t = text.trim();
@@ -732,6 +738,13 @@ function Composer({
     <div
       className="rv-card rv-composer"
       style={{ left: place.left + "px", top: place.top + "px" }}
+      onKeyDown={(e: KeyboardEvent) => {
+        // 폼 어디에 포커스가 있든(스크린샷 체크박스 포함) ⌘/Ctrl+Enter로 등록되게 컨테이너에서 처리.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          submit();
+        }
+      }}
     >
       <div className="rv-card-title">
         {isPage ? "이 페이지에 코멘트" : "이 위치에 코멘트"}
@@ -745,28 +758,16 @@ function Composer({
           onInput={(e: Event) =>
             setAuthor((e.currentTarget as HTMLInputElement).value)
           }
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submit();
-            }
-          }}
         />
       ) : null}
       <textarea
+        ref={textRef}
         className="rv-textarea"
         placeholder="코멘트를 입력하세요… (⌘/Ctrl+Enter 등록)"
         value={text}
-        autoFocus
         onInput={(e: Event) =>
           setText((e.currentTarget as HTMLTextAreaElement).value)
         }
-        onKeyDown={(e: KeyboardEvent) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            submit();
-          }
-        }}
       />
       {!isPage ? (
         <>
