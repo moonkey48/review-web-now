@@ -244,3 +244,22 @@
   - `pnpm test` 통과: 42 passed, 0 failed
   - `pnpm build` 통과
   - `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음
+
+## 15. v0.4.2 CDN 태그 배포
+
+목표: 스크린샷 내보내기 누락 수정까지 포함한 설치 버전을 `v0.4.2`로 배포하고, 앞으로 배포 시 항상 새 버전 태그 기준으로 안내하는 규칙을 확정한다.
+
+- [x] 원격 태그에 `v0.4.2`가 없는지 확인
+- [x] README와 설치 페이지 템플릿을 `@v0.4.2` + 새 SRI로 갱신
+- [x] 배포 요청 시 새 SemVer 태그를 만들고 설치 스크립트를 그 태그 기준으로 안내하는 규칙을 `tasks/lessons.md`에 추가
+- [x] 빌드/검색 검증
+- [ ] 문서 갱신 커밋 push
+- [ ] `v0.4.2` 태그 생성/푸시
+- [ ] jsDelivr `@v0.4.2/dist/widget.js` 응답 및 SRI 검증
+
+검토:
+- `pnpm typecheck` 통과
+- `pnpm test` 통과: 42 passed, 0 failed
+- `pnpm build` 통과
+- `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음
+- `dist/widget.js` SRI: `sha384-IPjPyGlrBhgxVG0a9uJ0Xo6yhQPndMM6M0pBhsX8hG6lDPExPOSjltZ94E3eApf0`
