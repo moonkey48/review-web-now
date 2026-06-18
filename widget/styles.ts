@@ -116,11 +116,23 @@ input, textarea { font: inherit; color: inherit; }
   padding: 8px 12px 0; font-size: 12px; color: #71717a; font-weight: 600;
 }
 
-/* ── 버전 바 (현재 선택 + 범례겸 표시 멀티선택) ── */
+/* ── 버전 바 (현재 칩 + 추가 버튼 + 범례겸 표시 멀티선택) ── */
 .rv-verbar { padding: 8px 12px; border-bottom: 1px solid #f1f1f4; }
-.rv-ver-current { display: flex; align-items: center; gap: 8px; }
+.rv-ver-current { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rv-ver-clabel { font-size: 11px; color: #71717a; font-weight: 600; white-space: nowrap; }
-.rv-ver-input { flex: 1; padding: 5px 8px; font-size: 12px; }
+/* 현재 작성 버전 칩(읽기 전용) */
+.rv-ver-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  background: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 999px; padding: 3px 10px;
+}
+.rv-ver-chip-name {
+  font-size: 12px; font-weight: 700; color: #18181b;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 새 버전 추가 행 */
+.rv-ver-add { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.rv-ver-input { flex: 1; min-width: 0; padding: 5px 8px; font-size: 12px; }
+.rv-ver-addbtn { flex-shrink: 0; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
 .rv-ver-toolbar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .rv-ver-hint { font-size: 11px; color: #71717a; font-weight: 600; margin-right: auto; }
 .rv-ver-mini {
@@ -128,8 +140,9 @@ input, textarea { font: inherit; color: inherit; }
   border: 1px solid #e4e4e7; background: #fafafa; border-radius: 6px; padding: 3px 8px;
 }
 .rv-ver-mini:hover { background: #f4f4f5; border-color: #d4d4d8; }
+/* 목록이 길어져도 패널이 늘어나지 않게 고정 높이 + 스크롤 */
 .rv-verlist {
-  margin-top: 6px; max-height: 132px; overflow-y: auto;
+  margin-top: 6px; max-height: 156px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 1px;
 }
 .rv-ver-row {
@@ -139,12 +152,16 @@ input, textarea { font: inherit; color: inherit; }
 .rv-ver-row:hover { background: #f4f4f5; }
 .rv-ver-row input { width: 14px; height: 14px; cursor: pointer; accent-color: #6366f1; flex-shrink: 0; }
 .rv-ver-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--rv-c, #6366f1); flex-shrink: 0; }
-.rv-ver-name { color: #3f3f46; font-weight: 600; word-break: break-all; }
+/* 긴 버전명은 말줄임(…) — title 툴팁으로 전체 확인 */
+.rv-ver-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #3f3f46; font-weight: 600;
+}
 .rv-ver-now {
-  font-size: 9px; font-weight: 700; color: #4338ca; background: #e0e7ff;
+  flex-shrink: 0; font-size: 9px; font-weight: 700; color: #4338ca; background: #e0e7ff;
   border-radius: 4px; padding: 1px 4px;
 }
-.rv-ver-count { margin-left: auto; font-size: 11px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+.rv-ver-count { margin-left: auto; flex-shrink: 0; padding-left: 6px; font-size: 11px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
 
 /* ── 핀 ──────────────────────────────────────── */
 .rv-pin {

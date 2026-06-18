@@ -1056,21 +1056,38 @@ interface VerProps {
 }
 
 function VersionBar({ ver }: { ver: VerProps }) {
-  const [draft, setDraft] = useState(ver.current);
-  useEffect(() => setDraft(ver.current), [ver.current]);
-  const commit = () => {
+  const [draft, setDraft] = useState(""); // 새 버전 입력(현재 버전과 분리 — 추가 전용)
+
+  // 입력값을 새 버전으로 추가하고 현재 작성 버전으로 전환(등록·표시 포함). 이미 있는 라벨이면 그 버전으로 전환.
+  const add = () => {
     const t = draft.trim();
-    if (t && t !== ver.current) ver.setCurrent(t);
-    else setDraft(ver.current);
+    if (!t) return;
+    ver.setCurrent(t);
+    setDraft("");
   };
+
   return (
     <div className="rv-verbar">
+      {/* 현재 작성 버전 — 색 칩으로 표시(읽기 전용) */}
       <div className="rv-ver-current">
         <span className="rv-ver-clabel">현재 작성 버전</span>
+        <span className="rv-ver-chip">
+          <span
+            className="rv-ver-swatch"
+            style={{ ["--rv-c" as any]: ver.colorFor(ver.current) }}
+          />
+          <span className="rv-ver-chip-name" title={ver.current}>
+            {ver.current}
+          </span>
+        </span>
+      </div>
+
+      {/* 새 버전 추가 — 명시 버튼 */}
+      <div className="rv-ver-add">
         <input
           className="rv-input rv-ver-input"
           list="rv-ver-list"
-          placeholder="예: 0.0.1 / 2026-06-18"
+          placeholder="새 버전 (예: v2 · 0.0.1 · 2026-06-18)"
           value={draft}
           onInput={(e: Event) =>
             setDraft((e.currentTarget as HTMLInputElement).value)
@@ -1078,18 +1095,24 @@ function VersionBar({ ver }: { ver: VerProps }) {
           onKeyDown={(e: KeyboardEvent) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
-              (e.currentTarget as HTMLInputElement).blur();
+              add();
             }
           }}
-          onBlur={commit}
         />
         <datalist id="rv-ver-list">
           {ver.known.map((v) => (
             <option key={v} value={v} />
           ))}
         </datalist>
+        <button
+          className="rv-btn rv-btn-primary rv-ver-addbtn"
+          disabled={!draft.trim()}
+          onClick={add}
+        >
+          + 추가
+        </button>
       </div>
+
       <div className="rv-ver-toolbar">
         <span className="rv-ver-hint">표시할 버전</span>
         <button className="rv-ver-mini" onClick={ver.showAll}>
@@ -1111,7 +1134,9 @@ function VersionBar({ ver }: { ver: VerProps }) {
               className="rv-ver-swatch"
               style={{ ["--rv-c" as any]: ver.colorFor(v) }}
             />
-            <span className="rv-ver-name">{v}</span>
+            <span className="rv-ver-name" title={v}>
+              {v}
+            </span>
             {v === ver.current ? <span className="rv-ver-now">현재</span> : null}
             <span className="rv-ver-count">{ver.counts.get(v) ?? 0}</span>
           </label>
