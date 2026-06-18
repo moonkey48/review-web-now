@@ -150,7 +150,7 @@ ok(
   "MD 딥링크 라인",
 );
 ok(mdAll.includes(`스크린샷: ![#`) && mdAll.includes(`images/${c1.id}.png`), "MD 스크린샷 상대경로 참조");
-ok(mdAll.includes("으로 위치를 중복 표기합니다"), "MD 상단 해석 가이드");
+ok(mdAll.includes("우선순위 순으로"), "MD 상단 해석 가이드(우선순위)");
 
 const mdOpen = buildMarkdown("데모 사이트", store.listAll(), { status: "open" });
 ok(!mdOpen.includes("[x]"), "open 필터: 해결됨 제외");
@@ -189,6 +189,73 @@ ok(inj.includes("click \\]\\(http://evil\\)"), "MD 인젝션: exact 메타문자
 ok(!inj.includes("[y](z)"), "MD 인젝션: a11y name 링크 비활성화");
 ok(inj.includes("섹션: a\\]b\\!"), "MD 인젝션: heading 이스케이프");
 ok(!inj.includes("a(b)?r=(1)") && inj.includes("a%28b%29"), "MD 인젝션: 딥링크 URL 괄호 인코딩");
+
+// v0.4.3 — 소스 포인터 / 뷰포트 / unique 힌트 / needsShot 라인 + 우선순위 순서
+const md043 = buildMarkdown(
+  "x",
+  [
+    {
+      id: "s1",
+      pagePath: "/studio",
+      pageUrl: "http://x/studio",
+      anchor: {
+        type: "pin",
+        selector: "button:nth-of-type(2)",
+        xPercent: 0,
+        yPercent: 0,
+        source: { component: "QueueItem", file: "src/queue-item.tsx", line: 31 },
+        quote: { exact: "샤워기를 들고 찍은 ugc 이미지", unique: true },
+        a11y: { role: "button", name: "큐 항목" },
+        vw: 1440,
+        vh: 900,
+      },
+      body: "큐 카드 크게",
+      authorName: "테스터",
+      shot: null,
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-18T00:00:00Z",
+      updatedAt: "2026-06-18T00:00:00Z",
+    },
+    {
+      id: "s2",
+      pagePath: "/studio",
+      pageUrl: "http://x/studio",
+      anchor: {
+        type: "pin",
+        selector: "div:nth-of-type(3)",
+        xPercent: 0,
+        yPercent: 0,
+        quote: { exact: "검색", unique: false },
+        vw: 390,
+        vh: 844,
+        needsShot: true,
+      },
+      body: "미리보기 너무 넓어",
+      authorName: "테스터",
+      shot: null,
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-18T00:01:00Z",
+      updatedAt: "2026-06-18T00:01:00Z",
+    },
+  ],
+  { status: "all", generatedAt: gen },
+);
+ok(md043.includes("소스: `QueueItem` · src/queue-item.tsx:31"), "MD 소스 포인터(컴포넌트·file:line)");
+ok(md043.includes('인용: "샤워기를 들고 찍은 ugc 이미지" · grep 1줄 기대'), "MD unique=true grep 힌트");
+ok(md043.includes('인용: "검색" · 중복 — 맥락/셀렉터 확인'), "MD unique=false 중복 힌트");
+ok(md043.includes("뷰포트: 1440×900"), "MD 뷰포트 폭×높이(데스크톱)");
+ok(md043.includes("뷰포트: 390×844"), "MD 뷰포트(모바일)");
+ok(md043.includes("⚠ 빈 요소 — 스크린샷 권장"), "MD needsShot 라인");
+ok(
+  md043.indexOf("소스: `QueueItem`") < md043.indexOf('인용: "샤워기'),
+  "MD 우선순위: 소스가 인용보다 먼저",
+);
+ok(
+  md043.indexOf('인용: "샤워기') < md043.indexOf("위치: `/studio`"),
+  "MD 우선순위: 인용이 셀렉터보다 먼저",
+);
 
 store.remove(c3.id);
 ok(store.listAll().length === 2, "remove 동작");

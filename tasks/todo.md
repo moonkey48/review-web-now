@@ -267,3 +267,104 @@
 - `v0.4.2` annotated tag 생성 및 push 완료. 태그 peel 대상: `4015a8e14835e472812f8bac05ff40bfc3607aa4`.
 - jsDelivr 확인: `https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v0.4.2/dist/widget.js`가 HTTP 200, `x-jsd-version: 0.4.2`, `content-length: 62367`로 응답.
 - CDN 파일을 내려받아 sha384 계산 결과가 README의 integrity 값과 일치함.
+
+## 16. v0.4.3 — 핸드오프 앵커 정확도 (테스터 피드백 5휴리스틱 + 소스포인터)
+
+배경: 0.4.2로 실측한 리뷰 정확도 피드백 — "DOM을 손으로 풀지 않아도 소스로 바로 가는 앵커가
+한 핀에 들어있어야 한다." 앵커 우선순위(best→worst): ①소스포인터(file:line/컴포넌트명)
+②최단 유일 보이는 텍스트 ③role+이름 ④작성자 id/data-testid ⑤CSS nth-of-type(최후수단).
+프레임워크 자동 id(base-ui-_r_*, react-aria-*)·거대 인용·숨은-heading 섹션은 신뢰 불가 → 제외.
+
+리서치/적대적 검증 결론 (피드백 가정 대비 정정 3건):
+- **R19 현실**: 타깃은 React 19.2(`base-ui-_r_3_`가 19.2 useId 형식). React 19가 `_debugSource`를
+  제거(PR #28265) → **수동 북마클릿에서 fiber로 진짜 file:line 추출 불가**. prod 빌드에선
+  컴포넌트명도 난독화(`a`,`Lh`). ⇒ 소스포인터는 "dev/속성 best-effort"로만, hero 아님.
+  진짜 file:line은 타깃 팀이 `data-source="file:line"` 빌드 플러그인을 심어야만 가능.
+- **shortestUniquePrefix 컷**: DOM 유일성 ≠ 소스 grep 유일성. 인용을 줄이면 오히려 원본
+  리터럴 grep이 나빠짐 → 줄이지 말고 OWN 텍스트 전체(≤80)를 싣되 `unique`는 힌트로만.
+- **body.innerText 인덱스 컷**: 임의 큰 페이지에서 매 클릭 full reflow → 잰크. 기존 Range
+  기반 `contextAround`로 충분.
+- **H5 자동 캡처 컷**: 빈 요소라고 자동 스크린샷하면 html2canvas CDN 강제 fetch + 프라이버시
+  → opt-in 기본 ON + 사유 안내(`needsShot` 플래그)로 대체.
+
+마이그레이션: 새 필드 전부 optional·additive. `store.create`가 anchor를 verbatim 직렬화,
+`resolveAnchor`/`scrollToAnchor`는 `anchor.selector`만 읽음 → 구버전 핀 무손상. `source`/`vw`는
+**절대 buildSelector에 넣지 않음**(셀렉터 재해석 깨짐 방지).
+
+### P0 — must-ship (알려진 타깃의 실 버그 + 5휴리스틱 직접 해결)
+- [ ] **P0-1 (H3) `anchor.ts segment()` 생성-id 게이트**: `node.id` 맹신 중단. `isGeneratedId()`
+      (useId `:r:/«r»/_r_`·base-ui/mui/radix/react-aria/headlessui·emotion css-*·uuid·40자+ 해시)
+      추가. 우선순위 재정렬: 작성자 id(비생성·유일) > data-testid/test/qa/cy(유일) >
+      name/aria-label(비생성·유일) > 시맨틱 태그 > nth-of-type(최후수단). 라이브 버그:
+      현재 `#base-ui-_r_3_`를 terminal 셀렉터로 방출 → 리로드 시 resolveAnchor 깨짐.
+- [ ] **P0-2 (H2) `anchor.ts textQuote()` OWN 텍스트 + 클릭 좁히기**: `el.textContent`(서브트리
+      전체→배너+헤더+카드 연결) → `ownText()`(직속 Text 노드만, ≤80자). `narrowToOwnText(el,x,y)`로
+      클릭한 leaf 재타깃(보이는 자식 BFS, point-in-rect 최소면적, 노드 2000개 캡). input→placeholder,
+      img→alt. `contextAround` 재사용. **인용은 줄이지 않고 전체 방출**(shortener 컷).
+- [ ] **P0-3 (H1) `anchor.ts nearestHeading()` 가시성 게이트**: `isHidden()`(display:none/
+      visibility:hidden/opacity:0/getClientRects().length===0[lg:hidden 포괄]/[hidden]/
+      [aria-hidden]) 통과한 heading만. offsetParent 분기는 fixed/sticky 오판 → 미사용.
+      `accName`도 생성-id aria-label/name 거부.
+- [ ] **P0-4 (H4) 뷰포트 폭**: Anchor에 `vw?`/`vh?` 추가, `buildAnchor`에서 `window.innerWidth/Height`,
+      MD에 `뷰포트: 1440×900` 렌더. lg: 분기로 요소 존재가 바뀌므로 필수.
+- [ ] **P0-5 스키마+MD 필드 재정렬**: `types.ts` `SourceRef` + Anchor optional 필드(`source?`,
+      `vw?`,`vh?`,`needsShot?`). `markdown.ts` 핀 블록 순서 = 소스 → 인용 → 역할/이름 → 셀렉터 →
+      뷰포트 → (게이트된)섹션 → needsShot. 상단 가이드도 새 순서로.
+
+### P1 — nice-to-have (예산 되면, 중복 앵커 뒤에서 best-effort)
+- [ ] **P1-1 `react-source.ts`(신규 ~30줄)**: `reactSource(el)` — ①심어둔 data-component/
+      data-source/data-locatorjs-id(조상 ≤6, prod-safe 유일경로) ②`_debugSource` file:line(R≤18 dev)
+      ③fiber.type 언래핑 컴포넌트명(R19 dev 포함, forwardRef+memo만). `goodName` 잡음 거름. throw 금지,
+      prod R19에선 undefined(정상). **buildSelector 절대 미사용.** bippy/captureOwnerStack/_debugOwner/
+      lazy 재귀 컷. → 타깃 팀에 dev/preview용 `data-source` 빌드 플러그인 권고 기록.
+- [ ] **P1-2 (H5) `needsShot` 플래그(자동 캡처 X)**: `buildAnchor`에서 `!quote && !a11y.name`이면
+      `needsShot:true`. `Composer` 스크린샷 체크박스 기본 ON + "빈 요소 — 스크린샷 권장" 안내.
+      MD에 ⚠ 라인. **사용자 동의 전 html2canvas fetch 없음.** `capture.ts` 무변경.
+- [ ] **P1-3 `quote.unique` 힌트(싸게만)**: MD 인용 줄에 "grep 1줄 기대" vs "중복 — 맥락/셀렉터
+      확인". `contextAround` 루트 텍스트 한정 bounded indexOf만(body.innerText reflow 금지).
+      `exact` 절대 변형 안 함.
+
+### P2 — defer
+- [ ] 진짜 R19 fiber file:line — 수동 북마클릿 불가. 타깃이 data-source 플러그인 심으면 P1-1이 소비.
+- [ ] captureOwnerStack/bippy/component-stack 심볼리케이션 — 타깃 빌드 플래그+강제 리렌더 필요.
+
+### 검증 체크리스트
+- [ ] 빌드/사이즈: `pnpm build` 통과, 북마클릿 예산 내, html2canvas 정적 import 0,
+      `reactSource`/`vw`/`source`가 buildSelector/segment/resolveAnchor에 안 들어감(grep).
+- [ ] H3: `id="base-ui-_r_3_"` 요소 → 셀렉터가 `#base-ui-_r_3_` 아님, 리로드 후 resolveAnchor 재발견.
+      `isGeneratedId` 단위: `:r0:`/`«r17»`/`_r_8_`/`react-aria-:r4:`/`css-1a2b3c4`/uuid→true,
+      `submit-btn`/`main-nav`/`userEmail`→false.
+- [ ] H2: 카드 래퍼 클릭→leaf OWN 텍스트만(연결 X)·≤80, 한글 리터럴 grep ~1줄. input→placeholder,
+      img→alt, 텍스트 없는 아이콘→quote undefined. body.innerText 호출 0, 2000노드 캡.
+- [ ] H1: lg:hidden/aria-hidden 배너 heading 미첨부, 실제 보이는 fixed/sticky heading은 잡힘.
+- [ ] H4: 새 핀에 vw/vh 기록, MD에 `뷰포트` 표시.
+- [ ] P1-1: dev 빌드→컴포넌트명(≤18은 file:line) MD `소스:` 노출, prod R19→undefined(난독화명 X)·throw X.
+      심어둔 `data-source="src/X.tsx:42"`→`{file,line}` 파싱(윈도우 `C:` 보호).
+- [ ] H5: 텍스트·이름 없는 아이콘→`needsShot:true`, 체크박스 기본 ON, 취소 시 CDN 요청 0.
+- [ ] 구버전 localStorage 로드(소스/vw/needsShot 없음): 핀 resolve·MD 렌더 정상, 마이그레이션 0.
+- [ ] selftest 단언 추가(생성-id 거부·OWN 텍스트·뷰포트·필드 순서), 실브라우저 스모크.
+
+파일: `types.ts`(스키마) · `anchor.ts`(P0-1/2/3/4 + P1-1 호출) · `markdown.ts`(필드 재정렬+뷰포트+
+소스+needsShot) · `app.tsx`(P1-2 Composer) · **신규** `react-source.ts`(P1-1) · `selftest.mjs`.
+`capture.ts` 무변경 · `store.ts` 코드 무변경(스키마 버전 주석만).
+
+### 결과/검토 (v0.4.3)
+- **P0 전부 구현**: H3 생성-id 게이트+우선순위(`segment`), H2 OWN 텍스트+클릭 narrow(`textQuote`/`ownText`/
+  `narrowToOwnText`), H1 가시성 게이트(`nearestHeading`/`isHidden`/`visibleHeading`), H4 뷰포트(`vw`/`vh`),
+  스키마+MD 필드 재정렬(소스→인용→역할/이름→셀렉터→뷰포트→섹션→needsShot). `accName` aria-label 생성-id 거부.
+- **P1 전부 구현**: `react-source.ts`(data-* 우선 → `_debugSource`(R≤18 dev) → fiber 컴포넌트명, throw 없음,
+  buildSelector 미사용), `needsShot` 플래그+Composer 기본 ON+사유 안내(자동 캡처 X), `quote.unique` 힌트
+  (섹션 한정 bounded indexOf, exact 불변).
+- **data-source 플러그인(P1+)**: 타깃 앱(/studio/image)이 이 워크스페이스에 없어 직접 주입 불가 →
+  적용 레시피 `docs/source-pointer-setup.md`로 전달(Next16 Turbopack 주의 + react-dev-inspector 1안 +
+  미니 Babel 플러그인 2안). 위젯은 data-component/data-source/data-inspector-*를 이미 소비.
+- **적대적 검증 반영(컷)**: shortestUniquePrefix(역효과), body.innerText 인덱스(reflow 잰크), H5 자동 캡처
+  (프라이버시), isVisible offsetParent 분기(fixed/sticky 오판), _debugOwner/lazy 재귀(번들) — 전부 미채택.
+- **검증**: `pnpm typecheck` 통과 · `pnpm test` **50 passed / 0 failed**(소스/뷰포트/unique/needsShot/순서 단언 추가)
+  · `pnpm build` 통과(widget.js 66.2KB) · 실브라우저(Playwright headless, 1440×900) 크래프트 DOM **13/13 통과**
+  (H1 숨은 heading 제외·보이는 heading 채택, H2 OWN 텍스트 연결 X, H3 base-ui/mui id 미사용, H4 vw/vh,
+  H5 빈 요소 needsShot, data-source 파싱, input placeholder, non-React 안전). `scripts/anchor-browsertest.mjs`.
+- **마이그레이션**: 신규 필드 additive·optional, `resolveAnchor`/`scrollToAnchor`는 selector만 읽어 구버전 핀
+  무손상(selftest의 구형 anchor가 그대로 렌더). `source`/`vw`는 buildSelector/resolveAnchor에 미사용.
+- **배포**: v0.4.3 — dist SRI `sha384-QG4rehFXJ+Nyy21ybfqqoGTW27wAAmdgK3Mn6ab3dW64fApum54tiC+MZYnV+g1e`,
+  README+설치페이지 `@v0.4.3`+새 SRI 갱신, 잔존 `0.4.2` 0건. 태그 생성/푸시 후 jsDelivr 검증.

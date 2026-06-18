@@ -455,6 +455,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           x={draft.x}
           y={draft.y}
           isPage={draft.anchor.type === "page"}
+          needsShot={draft.anchor.type === "pin" && !!draft.anchor.needsShot}
           name={name}
           onSubmit={submitDraft}
           onCancel={cancelDraft}
@@ -701,6 +702,7 @@ function Composer({
   x,
   y,
   isPage,
+  needsShot,
   name,
   onSubmit,
   onCancel,
@@ -708,13 +710,15 @@ function Composer({
   x: number;
   y: number;
   isPage: boolean;
+  needsShot: boolean;
   name: string;
   onSubmit: (text: string, author: string, shoot: boolean) => void;
   onCancel: () => void;
 }) {
   const [text, setText] = useState("");
   const [author, setAuthor] = useState(name);
-  const [shoot, setShoot] = useState(false); // 스크린샷 첨부 — 기본 OFF
+  // 스크린샷 첨부 — 기본 OFF. 단 빈 요소(텍스트·이름 없음)는 스크린샷이 사실상 유일한 단서라 기본 ON(자동 캡처는 아님 — 등록 시 동의된 캡처만).
+  const [shoot, setShoot] = useState(needsShot);
   const place = clampPos(x + 10, y + 10, 290, 230);
 
   const submit = () => {
@@ -765,16 +769,23 @@ function Composer({
         }}
       />
       {!isPage ? (
-        <label className="rv-shot-check">
-          <input
-            type="checkbox"
-            checked={shoot}
-            onChange={(e: Event) =>
-              setShoot((e.currentTarget as HTMLInputElement).checked)
-            }
-          />
-          📷 스크린샷 첨부
-        </label>
+        <>
+          <label className="rv-shot-check">
+            <input
+              type="checkbox"
+              checked={shoot}
+              onChange={(e: Event) =>
+                setShoot((e.currentTarget as HTMLInputElement).checked)
+              }
+            />
+            📷 스크린샷 첨부
+          </label>
+          {needsShot ? (
+            <div className="rv-shot-hint">
+              텍스트가 없는 요소예요 — 스크린샷을 권장합니다
+            </div>
+          ) : null}
+        </>
       ) : null}
       <div className="rv-row-end">
         <button className="rv-btn rv-btn-ghost" onClick={onCancel}>

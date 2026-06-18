@@ -171,6 +171,7 @@ input, textarea { font: inherit; color: inherit; }
   font-size: 12px; color: #52525b; cursor: pointer; user-select: none;
 }
 .rv-shot-check input { width: 14px; height: 14px; cursor: pointer; accent-color: #6366f1; }
+.rv-shot-hint { margin-top: 4px; font-size: 11px; color: #b45309; line-height: 1.4; }
 
 /* ── 스크린샷 썸네일 (스레드 팝업) ── */
 .rv-shot-thumb {

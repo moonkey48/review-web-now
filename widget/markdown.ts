@@ -90,7 +90,7 @@ export function buildMarkdown(
   );
   lines.push(">");
   lines.push(
-    "> 각 핀은 `인용`(텍스트 grep용)·`요소(역할/이름)`(빈 요소 식별)·`셀렉터`·`딥링크`·`스크린샷`으로 위치를 중복 표기합니다. 인용/이름으로 소스를 검색해 해당 위치를 찾으세요.",
+    "> 각 핀은 우선순위 순으로 `소스`(컴포넌트·file:line)·`인용`(텍스트 grep)·`요소(역할/이름)`·`셀렉터`·`뷰포트`·`섹션`을 표기합니다. 위에서부터 신뢰하세요 — 소스/인용만 맞으면 셀렉터 없이 바로 찾습니다.",
   );
 
   let seq = 0;
@@ -105,27 +105,46 @@ export function buildMarkdown(
       // 제목 없이 본문을 체크박스 항목으로 바로 싣는다 (첫 줄 → 나머지 줄은 들여쓰기)
       lines.push(`${seq}. [${c.resolved ? "x" : " "}] ${body[0] ?? ""}`);
       for (const l of body.slice(1)) lines.push(`   ${l}`);
-      // 같은 위치를 여러 방식으로 중복 표기 — 항상 채워지는 의미·내용 키를 먼저, 셀렉터/딥링크/샷은 보조.
+      // 우선순위 순으로 위치를 표기 — 소스 → 인용 → 역할/이름 → 셀렉터 → 뷰포트 → 섹션 → needsShot.
       const a = c.anchor;
       if (a?.type === "pin") {
-        if (a.heading) lines.push(`   - 섹션: ${escMd(a.heading)}`);
+        // ① 소스 포인터 — 최우선(있으면 추적 0)
+        if (a.source && (a.source.component || a.source.file)) {
+          const comp = a.source.component ? `\`${a.source.component.replace(/`/g, "")}\`` : "";
+          const loc = a.source.file
+            ? escMd(a.source.file + (a.source.line ? `:${a.source.line}` : ""))
+            : "";
+          lines.push(`   - 소스: ${[comp, loc].filter(Boolean).join(" · ")}`);
+        }
+        // ② 인용(OWN 텍스트 grep) — unique면 grep 1줄 기대 힌트
+        if (a.quote?.exact) {
+          const ex = escMd(a.quote.exact);
+          let line: string;
+          if (a.quote.prefix || a.quote.suffix) {
+            const pre = a.quote.prefix ? `…${escMd(a.quote.prefix.trim())} ` : "…";
+            const suf = a.quote.suffix ? ` ${escMd(a.quote.suffix.trim())}…` : "…";
+            line = `   - 인용: ${pre}**[${ex}]**${suf}`;
+          } else {
+            line = `   - 인용: "${ex}"`;
+          }
+          if (a.quote.unique === true) line += " · grep 1줄 기대";
+          else if (a.quote.unique === false) line += " · 중복 — 맥락/셀렉터 확인";
+          lines.push(line);
+        }
+        // ③ 역할 + 접근가능한 이름
         if (a.a11y && (a.a11y.role || a.a11y.name)) {
           const role = a.a11y.role ? `\`${a.a11y.role.replace(/`/g, "")}\`` : "";
           const name = a.a11y.name ? `"${escMd(a.a11y.name)}"` : "";
           lines.push(`   - 요소(역할/이름): ${[role, name].filter(Boolean).join(" / ")}`);
         }
-        if (a.quote?.exact) {
-          const ex = escMd(a.quote.exact);
-          if (a.quote.prefix || a.quote.suffix) {
-            const pre = a.quote.prefix ? `…${escMd(a.quote.prefix.trim())} ` : "…";
-            const suf = a.quote.suffix ? ` ${escMd(a.quote.suffix.trim())}…` : "…";
-            lines.push(`   - 인용: ${pre}**[${ex}]**${suf}`);
-          } else {
-            lines.push(`   - 인용: "${ex}"`);
-          }
-        }
       }
+      // ④ 셀렉터(최후수단 톤) — 경로 + 핀 셀렉터
       lines.push(`   - 위치: \`${page.replace(/`/g, "'")}\` · ${anchorLabel(c.anchor)}`);
+      if (a?.type === "pin") {
+        if (a.vw) lines.push(`   - 뷰포트: ${a.vw}${a.vh ? `×${a.vh}` : ""}`);
+        if (a.heading) lines.push(`   - 섹션: ${escMd(a.heading)}`); // 약한 보조 컨텍스트(보이는 heading만)
+        if (a.needsShot && !c.shot) lines.push("   - ⚠ 빈 요소 — 스크린샷 권장");
+      }
       if (a?.type === "pin" && a.deepLink) {
         lines.push(`   - 딥링크: [위치 열기](${escUrl(a.deepLink)}) (새 탭·SPA/origin 주의)`);
       }
