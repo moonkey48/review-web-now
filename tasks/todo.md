@@ -253,9 +253,9 @@
 - [x] README와 설치 페이지 템플릿을 `@v0.4.2` + 새 SRI로 갱신
 - [x] 배포 요청 시 새 SemVer 태그를 만들고 설치 스크립트를 그 태그 기준으로 안내하는 규칙을 `tasks/lessons.md`에 추가
 - [x] 빌드/검색 검증
-- [ ] 문서 갱신 커밋 push
-- [ ] `v0.4.2` 태그 생성/푸시
-- [ ] jsDelivr `@v0.4.2/dist/widget.js` 응답 및 SRI 검증
+- [x] 문서 갱신 커밋 push
+- [x] `v0.4.2` 태그 생성/푸시
+- [x] jsDelivr `@v0.4.2/dist/widget.js` 응답 및 SRI 검증
 
 검토:
 - `pnpm typecheck` 통과
@@ -263,3 +263,7 @@
 - `pnpm build` 통과
 - `rg -n "review-web-now@main|@main" README.md templates/index.html dist/index.html` 결과 없음
 - `dist/widget.js` SRI: `sha384-IPjPyGlrBhgxVG0a9uJ0Xo6yhQPndMM6M0pBhsX8hG6lDPExPOSjltZ94E3eApf0`
+- 문서 갱신 커밋 `4015a8e` push 완료.
+- `v0.4.2` annotated tag 생성 및 push 완료. 태그 peel 대상: `4015a8e14835e472812f8bac05ff40bfc3607aa4`.
+- jsDelivr 확인: `https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v0.4.2/dist/widget.js`가 HTTP 200, `x-jsd-version: 0.4.2`, `content-length: 62367`로 응답.
+- CDN 파일을 내려받아 sha384 계산 결과가 README의 integrity 값과 일치함.
