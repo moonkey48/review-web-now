@@ -285,6 +285,12 @@ ok(JSON.stringify(store.readVisibleRaw()) === JSON.stringify(["0.0.1"]), "가시
 store.clearVisible();
 ok(store.readVisibleRaw() === null, "clearVisible → 전체 센티넬 복원");
 
+// nextVersion — 버튼 생성용 vN 자동 증가(레거시 라벨 무시)
+ok(store.nextVersion([]) === "v1", "nextVersion([]) = v1");
+ok(store.nextVersion(["v0"]) === "v1", "nextVersion([v0]) = v1(SEED 다음)");
+ok(store.nextVersion(["v0", "v3", "draft"]) === "v4", "nextVersion: 최대 vN+1");
+ok(store.nextVersion(["0.0.1", "release"]) === "v1", "nextVersion: 레거시 라벨 무시 → v1");
+
 // 색 안정성 — 현재 버전 bump해도 다른 버전 색 불변(적대적 검증이 잡은 회귀)
 store.clear();
 store.setVersion("v0");

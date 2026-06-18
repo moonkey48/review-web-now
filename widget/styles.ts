@@ -116,27 +116,32 @@ input, textarea { font: inherit; color: inherit; }
   padding: 8px 12px 0; font-size: 12px; color: #71717a; font-weight: 600;
 }
 
-/* ── 버전 바 (접이식: 평소엔 요약 한 줄, 펼치면 추가 + 표시 토글) ── */
+/* ── 버전 바 (ZONE1 항상 보임: 스위치+생성+표시토글 / ZONE2 접이식: 표시할 버전) ── */
 .rv-verbar { border-bottom: 1px solid #f1f1f4; }
-/* 접힌 요약 줄 — 전체 폭 버튼 */
-.rv-ver-summary {
-  width: 100%; display: flex; align-items: center; gap: 8px;
-  padding: 9px 12px; text-align: left;
+/* ZONE 1 — 항상 보이는 한 줄 */
+.rv-ver-bar1 { display: flex; align-items: center; gap: 6px; padding: 8px 12px; }
+/* 현재 작성 버전 스위치(네이티브 select) — 긴 라벨은 max-width로 클립(가로 오버플로 방지) */
+.rv-ver-select {
+  flex: 0 1 auto; min-width: 0; max-width: 150px;
+  border: 1px solid #d4d4d8; border-radius: 8px; padding: 5px 8px;
+  font-size: 12px; font-weight: 700; color: #18181b; background: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.rv-ver-summary:hover { background: #f4f4f5; }
-.rv-ver-summary-cur {
-  font-size: 12px; font-weight: 700; color: #18181b;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.rv-ver-select:focus { border-color: #6366f1; outline: none; }
+.rv-ver-newbtn { flex-shrink: 0; padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+.rv-ver-vistog {
+  flex-shrink: 0; margin-left: auto;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 600; color: #71717a;
+  padding: 4px 6px; border-radius: 6px; font-variant-numeric: tabular-nums;
 }
-.rv-ver-summary-meta { font-size: 11px; color: #a1a1aa; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rv-ver-caret { margin-left: auto; flex-shrink: 0; color: #a1a1aa; font-size: 10px; transition: transform .15s ease; }
+.rv-ver-vistog:hover { background: #f4f4f5; color: #18181b; }
+.rv-ver-vistog b { color: #18181b; }
+.rv-ver-caret { flex-shrink: 0; color: #a1a1aa; font-size: 10px; transition: transform .15s ease; }
 .rv-verbar.rv-open .rv-ver-caret { transform: rotate(180deg); }
-/* 펼친 본문 */
+/* ZONE 2 — 펼친 본문(가시성 목록만) */
 .rv-ver-body { padding: 0 12px 10px; }
-.rv-ver-add { display: flex; align-items: center; gap: 6px; }
-.rv-ver-input { flex: 1; min-width: 0; padding: 5px 8px; font-size: 12px; }
-.rv-ver-addbtn { flex-shrink: 0; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
-.rv-ver-toolbar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.rv-ver-toolbar { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .rv-ver-hint { font-size: 11px; color: #71717a; font-weight: 600; margin-right: auto; }
 .rv-ver-mini {
   font-size: 11px; color: #52525b; font-weight: 600;
@@ -148,13 +153,14 @@ input, textarea { font: inherit; color: inherit; }
   margin-top: 6px; max-height: 168px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 1px;
 }
-/* 행 = 표시 on/off 토글 버튼 — 색 스와치 자체가 affordance */
+/* 행 = 표시 멀티선택 <label> + 체크박스 (여러 버전 동시 보기) */
 .rv-ver-row {
   width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
-  padding: 5px 6px; border-radius: 6px; font-size: 12px;
+  padding: 5px 6px; border-radius: 6px; font-size: 12px; cursor: pointer;
 }
 .rv-ver-row:hover { background: #f4f4f5; }
 .rv-ver-row.rv-ver-off { opacity: .5; }
+.rv-ver-cb { width: 14px; height: 14px; flex-shrink: 0; accent-color: #6366f1; cursor: pointer; }
 .rv-ver-swatch { width: 13px; height: 13px; border-radius: 4px; background: var(--rv-c, #6366f1); flex-shrink: 0; }
 /* 숨김: 채움 대신 색 링 — 어느 버전인지는 유지하면서 off임을 표현 */
 .rv-ver-off .rv-ver-swatch { background: transparent; box-shadow: inset 0 0 0 2px var(--rv-c, #a1a1aa); }

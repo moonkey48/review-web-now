@@ -130,6 +130,20 @@ export function clearVisible(): void {
   }
 }
 
+// 버튼으로 만들 다음 버전 라벨 — vN 단위 자동 증가. 레거시 자유 라벨(날짜·0.0.1 등)은 무시.
+// nextVersion(["v0"])→"v1" · nextVersion(["v0","v3","draft"])→"v4" · nextVersion(["0.0.1"])→"v1" · nextVersion([])→"v1"
+export function nextVersion(existing: string[]): string {
+  let max = 0;
+  for (const v of existing) {
+    const m = /^v(\d+)$/.exec(v);
+    if (m) {
+      const n = +m[1];
+      if (n > max) max = n;
+    }
+  }
+  return "v" + (max + 1);
+}
+
 // 색상: 현재=인디고(렌더타임 오버레이), 그 외=레지스트리 삽입순 고정 팔레트(append-only라 bump해도 불변).
 export function colorFor(version: string, current = getVersion()): string {
   if (version === current) return SIGNATURE;

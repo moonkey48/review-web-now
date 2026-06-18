@@ -1056,76 +1056,54 @@ interface VerProps {
 }
 
 function VersionBar({ ver }: { ver: VerProps }) {
-  const [open, setOpen] = useState(false); // 버전 관리는 기본 접힘 — 코멘트가 패널 위로 오게
-  const [draft, setDraft] = useState(""); // 새 버전 입력(추가 전용)
-
-  // 입력값을 새 버전으로 추가하고 현재 작성 버전으로 전환(등록·표시 포함). 이미 있는 라벨이면 그 버전으로 전환.
-  const add = () => {
-    const t = draft.trim();
-    if (!t) return;
-    ver.setCurrent(t);
-    setDraft("");
-  };
-
+  const [open, setOpen] = useState(false); // 가시성 목록만 접힘 — 스위치/생성은 항상 보임
   const shown = ver.all.filter((v) => ver.visible.has(v)).length;
 
   return (
     <div className={`rv-verbar${open ? " rv-open" : ""}`}>
-      {/* 접힌 요약 — 평소엔 이 한 줄만. 클릭하면 펼침(코멘트가 패널의 주인이 되게). */}
-      <button
-        className="rv-ver-summary"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
+      {/* ZONE 1 — 항상 보임: 스위치(select) + 생성(버튼) + 표시 토글 */}
+      <div className="rv-ver-bar1">
         <span
           className="rv-ver-swatch"
           style={{ ["--rv-c" as any]: ver.colorFor(ver.current) }}
         />
-        <span className="rv-ver-summary-cur" title={ver.current}>
-          버전 {ver.current}
-        </span>
-        <span className="rv-ver-summary-meta">
-          {shown}/{ver.all.length} 표시
-        </span>
-        <span className="rv-ver-caret">▾</span>
-      </button>
+        {/* 현재 작성 버전 스위치 — 버전 단위(vN), 날짜 입력 없음 */}
+        <select
+          className="rv-ver-select"
+          value={ver.current}
+          aria-label="현재 작성 버전"
+          onChange={(e: Event) =>
+            ver.setCurrent((e.currentTarget as HTMLSelectElement).value)
+          }
+        >
+          {ver.all.map((v) => (
+            <option key={v} value={v}>{`■ ${v}`}</option>
+          ))}
+        </select>
+        {/* 새 버전 생성 — 버튼으로 자동 증가(v0→v1→v2…), 텍스트 입력 없음 */}
+        <button
+          className="rv-btn rv-btn-ghost rv-ver-newbtn"
+          title="다음 버전을 만들고 현재로 전환"
+          onClick={() => ver.setCurrent(store.nextVersion(ver.all))}
+        >
+          + 새 버전
+        </button>
+        {/* 표시(가시성) 목록 펼치기/접기 — 이것만 접힘 */}
+        <button
+          className="rv-ver-vistog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          표시 <b>{shown}</b>/{ver.all.length}{" "}
+          <span className="rv-ver-caret">▾</span>
+        </button>
+      </div>
 
+      {/* ZONE 2 — 접이식: 표시할 버전 멀티선택(여러 버전 동시 보기) */}
       {open ? (
         <div className="rv-ver-body">
-          {/* 새 버전 추가 */}
-          <div className="rv-ver-add">
-            <input
-              className="rv-input rv-ver-input"
-              list="rv-ver-list"
-              placeholder="새 버전 (예: v2 · 0.0.1)"
-              value={draft}
-              onInput={(e: Event) =>
-                setDraft((e.currentTarget as HTMLInputElement).value)
-              }
-              onKeyDown={(e: KeyboardEvent) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  add();
-                }
-              }}
-            />
-            <datalist id="rv-ver-list">
-              {ver.known.map((v) => (
-                <option key={v} value={v} />
-              ))}
-            </datalist>
-            <button
-              className="rv-btn rv-btn-primary rv-ver-addbtn"
-              disabled={!draft.trim()}
-              onClick={add}
-            >
-              + 추가
-            </button>
-          </div>
-
-          {/* 표시 토글 — 행의 색 스와치 자체가 on/off */}
           <div className="rv-ver-toolbar">
-            <span className="rv-ver-hint">표시</span>
+            <span className="rv-ver-hint">표시할 버전</span>
             <button className="rv-ver-mini" onClick={ver.showAll}>
               전체
             </button>
@@ -1137,14 +1115,17 @@ function VersionBar({ ver }: { ver: VerProps }) {
             {ver.all.map((v) => {
               const on = ver.visible.has(v);
               return (
-                <button
+                <label
                   key={v}
-                  type="button"
                   className={`rv-ver-row${on ? "" : " rv-ver-off"}`}
-                  aria-pressed={on}
-                  title={`${v} — ${on ? "표시 중 (클릭해 숨기기)" : "숨김 (클릭해 표시)"}`}
-                  onClick={() => ver.toggle(v)}
+                  title={v}
                 >
+                  <input
+                    type="checkbox"
+                    className="rv-ver-cb"
+                    checked={on}
+                    onChange={() => ver.toggle(v)}
+                  />
                   <span
                     className="rv-ver-swatch"
                     style={{ ["--rv-c" as any]: ver.colorFor(v) }}
@@ -1154,7 +1135,7 @@ function VersionBar({ ver }: { ver: VerProps }) {
                   {v === ver.current ? (
                     <span className="rv-ver-now">현재</span>
                   ) : null}
-                </button>
+                </label>
               );
             })}
           </div>
