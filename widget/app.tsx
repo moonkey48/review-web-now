@@ -100,6 +100,8 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const toastTimer = useRef<number | undefined>(undefined);
   const captureJobs = useRef<Promise<void>[]>([]);
   const [pendingShots, setPendingShots] = useState(0);
+  const [curVer, setCurVerState] = useState(() => store.getVersion()); // 현재(스탬프) 버전
+  const [visRaw, setVisRaw] = useState<string[] | null>(() => store.readVisibleRaw()); // null=전체 센티넬, []=모두 끔
 
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -136,6 +138,69 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
 
   const comments = useMemo(() => store.list(path), [path, rev]);
   const allComments = useMemo(() => store.listAll(), [rev]);
+
+  // 버전별 코멘트 수(전체 서비스 기준).
+  const verCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of allComments) {
+      const v = store.verOf(c);
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+    return m;
+  }, [allComments]);
+  // 표시 후보 버전 목록 = 레지스트리(고정 색·순서) ∪ 현재 ∪ 코멘트 실재.
+  const allVersions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const push = (v: string) => {
+      if (v && !seen.has(v)) {
+        seen.add(v);
+        out.push(v);
+      }
+    };
+    for (const v of store.getKnownVersions()) push(v);
+    push(curVer);
+    for (const v of verCounts.keys()) push(v);
+    return out;
+  }, [curVer, verCounts, rev]);
+  // 가시 집합 1회 계산(핀마다 localStorage 읽지 않음). null 센티넬=전체.
+  const visibleSet = useMemo(
+    () => (visRaw === null ? new Set(allVersions) : new Set(visRaw)),
+    [visRaw, allVersions],
+  );
+
+  // 현재 버전 변경 — 명시 가시 집합이 있으면 새 버전을 함께 켠다(센티넬은 보존).
+  const setCurVer = useCallback(
+    (v: string) => {
+      const t = v.trim();
+      if (!t) return;
+      store.setVersion(t);
+      setCurVerState(t);
+      setVisRaw((prev) => (prev === null ? null : prev.includes(t) ? prev : [...prev, t]));
+      bumpData();
+    },
+    [bumpData],
+  );
+  // 버전 표시 토글 — 첫 토글 시 전체 센티넬을 구체 집합으로 구체화.
+  const toggleVisible = useCallback(
+    (v: string) => {
+      setVisRaw((prev) => {
+        const base = prev === null ? allVersions : prev;
+        const n = base.includes(v) ? base.filter((x) => x !== v) : [...base, v];
+        store.setVisibleVersions(n);
+        return n;
+      });
+    },
+    [allVersions],
+  );
+  const showAllVersions = useCallback(() => {
+    store.clearVisible();
+    setVisRaw(null);
+  }, []);
+  const showOnlyCurrent = useCallback(() => {
+    store.setVisibleVersions([curVer]);
+    setVisRaw([curVer]);
+  }, [curVer]);
 
   // SPA 내비게이션 감지 (pushState/replaceState 훅 + popstate)
   useEffect(() => {
@@ -401,12 +466,28 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   // 전체 서비스 기준 미해결 카운트
   const unresolved = allComments.filter((c) => !c.resolved).length;
   const pins = comments
+    // 번호는 버전 필터 전에 per-page 인덱스로 매긴다 — 버전을 토글해도 번호가 흔들리지 않고 MD/스레드와 일치.
     .map((c, i) => ({ c, n: i + 1 }))
-    .filter(({ c }) => c.anchor?.type === "pin" && (!hideResolved || !c.resolved))
-    .map((item) => ({ ...item, pos: resolveAnchor(item.c.anchor as Anchor) }))
     .filter(
-      (item): item is { c: RvComment; n: number; pos: { x: number; y: number } } =>
-        item.pos !== null,
+      ({ c }) =>
+        c.anchor?.type === "pin" &&
+        (!hideResolved || !c.resolved) &&
+        visibleSet.has(store.verOf(c)),
+    )
+    .map((item) => ({
+      ...item,
+      pos: resolveAnchor(item.c.anchor as Anchor),
+      color: store.colorFor(store.verOf(item.c), curVer),
+    }))
+    .filter(
+      (
+        item,
+      ): item is {
+        c: RvComment;
+        n: number;
+        pos: { x: number; y: number };
+        color: string;
+      } => item.pos !== null,
     );
 
   const active = activeId ? (comments.find((c) => c.id === activeId) ?? null) : null;
@@ -432,7 +513,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
         <DraftHighlight anchor={draft.anchor} />
       ) : null}
 
-      {pins.map(({ c, n, pos }) => (
+      {pins.map(({ c, n, pos, color }) => (
         <button
           key={c.id}
           className={`rv-pin${c.resolved ? " rv-pin-resolved" : ""}${
@@ -440,6 +521,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           }`}
           // 코멘트 모드 중에는 핀이 클릭을 가로채지 않게 투과시킨다
           style={{
+            ["--rv-c" as any]: color, // 버전별 색(해결됨 회색·활성 outline은 CSS 후순위 규칙으로 유지)
             left: pos.x + "px",
             top: pos.y + "px",
             pointerEvents: mode ? "none" : "auto",
@@ -505,6 +587,18 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           onExportFiles={exportFilesWithShots}
           onClearAll={clearAll}
           pendingShots={pendingShots}
+          ver={{
+            current: curVer,
+            setCurrent: setCurVer,
+            all: allVersions,
+            counts: verCounts,
+            visible: visibleSet,
+            toggle: toggleVisible,
+            showAll: showAllVersions,
+            showOnlyCurrent,
+            colorFor: (v: string) => store.colorFor(v, curVer),
+            known: store.getKnownVersions(),
+          }}
           onClose={() => setPanelOpen(false)}
           onHide={() => {
             if (
@@ -947,6 +1041,86 @@ function ShotThumb({ id }: { id: string }) {
   return <img className="rv-shot-thumb" src={url} alt="첨부된 스크린샷" />;
 }
 
+/* ── 버전 바 (현재 선택 + 범례겸 표시 멀티선택) ── */
+interface VerProps {
+  current: string;
+  setCurrent: (v: string) => void;
+  all: string[];
+  counts: Map<string, number>;
+  visible: Set<string>;
+  toggle: (v: string) => void;
+  showAll: () => void;
+  showOnlyCurrent: () => void;
+  colorFor: (v: string) => string;
+  known: string[];
+}
+
+function VersionBar({ ver }: { ver: VerProps }) {
+  const [draft, setDraft] = useState(ver.current);
+  useEffect(() => setDraft(ver.current), [ver.current]);
+  const commit = () => {
+    const t = draft.trim();
+    if (t && t !== ver.current) ver.setCurrent(t);
+    else setDraft(ver.current);
+  };
+  return (
+    <div className="rv-verbar">
+      <div className="rv-ver-current">
+        <span className="rv-ver-clabel">현재 작성 버전</span>
+        <input
+          className="rv-input rv-ver-input"
+          list="rv-ver-list"
+          placeholder="예: 0.0.1 / 2026-06-18"
+          value={draft}
+          onInput={(e: Event) =>
+            setDraft((e.currentTarget as HTMLInputElement).value)
+          }
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+              (e.currentTarget as HTMLInputElement).blur();
+            }
+          }}
+          onBlur={commit}
+        />
+        <datalist id="rv-ver-list">
+          {ver.known.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      </div>
+      <div className="rv-ver-toolbar">
+        <span className="rv-ver-hint">표시할 버전</span>
+        <button className="rv-ver-mini" onClick={ver.showAll}>
+          전체
+        </button>
+        <button className="rv-ver-mini" onClick={ver.showOnlyCurrent}>
+          현재만
+        </button>
+      </div>
+      <div className="rv-verlist">
+        {ver.all.map((v) => (
+          <label key={v} className="rv-ver-row">
+            <input
+              type="checkbox"
+              checked={ver.visible.has(v)}
+              onChange={() => ver.toggle(v)}
+            />
+            <span
+              className="rv-ver-swatch"
+              style={{ ["--rv-c" as any]: ver.colorFor(v) }}
+            />
+            <span className="rv-ver-name">{v}</span>
+            {v === ver.current ? <span className="rv-ver-now">현재</span> : null}
+            <span className="rv-ver-count">{ver.counts.get(v) ?? 0}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── 패널 ─────────────────────────────────────── */
 function Panel({
   comments,
@@ -963,6 +1137,7 @@ function Panel({
   onExportFiles,
   onClearAll,
   pendingShots,
+  ver,
   onClose,
   onHide,
 }: {
@@ -980,16 +1155,17 @@ function Panel({
   onExportFiles: () => void;
   onClearAll: () => void;
   pendingShots: number;
+  ver: VerProps;
   onClose: () => void;
   onHide: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name);
 
-  // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다
-  const filtered = hideResolved
-    ? allComments.filter((c) => !c.resolved)
-    : allComments;
+  // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다(해결됨 + 버전 가시성 필터).
+  const filtered = allComments.filter(
+    (c) => (!hideResolved || !c.resolved) && ver.visible.has(store.verOf(c)),
+  );
   const totalForExport = hideResolved
     ? allComments.filter((c) => !c.resolved).length
     : allComments.length;
@@ -1011,6 +1187,8 @@ function Panel({
       </div>
 
       <div className="rv-panel-sub">전체 서비스 리뷰 · {allComments.length}개</div>
+
+      <VersionBar ver={ver} />
 
       <div className="rv-panel-toolbar">
         <label className="rv-check">
@@ -1043,7 +1221,10 @@ function Panel({
                 className={`rv-item${c.resolved ? " rv-resolved" : ""}`}
                 onClick={() => onGoTo(c)}
               >
-                <span className="rv-item-num">
+                <span
+                  className="rv-item-num"
+                  style={{ ["--rv-c" as any]: ver.colorFor(store.verOf(c)) }}
+                >
                   {c.pagePath === currentPath ? comments.indexOf(c) + 1 : "•"}
                 </span>
                 <span style={{ minWidth: "0", flex: "1", display: "block" }}>

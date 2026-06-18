@@ -262,6 +262,59 @@ ok(store.listAll().length === 2, "remove 동작");
 store.clear();
 ok(store.listAll().length === 0, "clear 동작");
 
+// ── 버전 관리 ─────────────────────────────────────────────────
+// clear()가 버전 키도 리셋했는지(확장된 clear)
+ok(store.getVersion() === "v0", "clear 후 현재 버전 = v0(SEED)");
+ok(store.readVisibleRaw() === null, "clear 후 가시성 = 전체 센티넬(null)");
+ok(store.getKnownVersions().length === 0, "clear 후 레지스트리 비어있음");
+
+// create()가 현재 버전을 스탬프
+const vc1 = store.create({ pagePath: "/v", pageUrl: "http://x/v", body: "b", authorName: "t", anchor: { type: "page" } });
+ok(vc1.version === "v0", "create: 현재 버전(v0) 스탬프");
+
+// 버전 bump → 새 코멘트 반영 + 레지스트리 등록
+store.setVersion("0.0.1");
+ok(store.getVersion() === "0.0.1", "setVersion 반영");
+const vc2 = store.create({ pagePath: "/v", pageUrl: "http://x/v", body: "b2", authorName: "t", anchor: { type: "page" } });
+ok(vc2.version === "0.0.1", "create: bump된 버전 스탬프");
+ok(store.getKnownVersions().includes("0.0.1"), "레지스트리에 새 버전 등록");
+
+// 가시성 persist + 센티넬 복원
+store.setVisibleVersions(["0.0.1"]);
+ok(JSON.stringify(store.readVisibleRaw()) === JSON.stringify(["0.0.1"]), "가시성 persist");
+store.clearVisible();
+ok(store.readVisibleRaw() === null, "clearVisible → 전체 센티넬 복원");
+
+// 색 안정성 — 현재 버전 bump해도 다른 버전 색 불변(적대적 검증이 잡은 회귀)
+store.clear();
+store.setVersion("v0");
+store.setVersion("v1");
+store.setVersion("v2"); // 레지스트리 [v0,v1,v2], current=v2
+const v1ColorBefore = store.colorFor("v1", "v2");
+ok(store.colorFor("v2", "v2") === "#6366f1", "현재 버전 = 시그니처 인디고");
+ok(v1ColorBefore !== "#6366f1" && v1ColorBefore.charAt(0) === "#", "비현재 버전 = 팔레트 색");
+ok(store.colorFor("v1", "v0") === v1ColorBefore, "색 안정성: 현재 bump해도 v1 색 불변");
+ok(store.colorFor("v0", "v0") === "#6366f1", "bump 후 새 현재(v0)=인디고");
+
+// 마이그레이션 — 버전 없는 코멘트 → v0, 멱등
+store.clear();
+globalThis.localStorage.setItem("rv:comments", JSON.stringify([
+  { id: "legacy1", pagePath: "/p", pageUrl: "http://x/p", anchor: { type: "page" }, body: "옛 코멘트", authorName: "t", resolved: false, resolvedAt: null, createdAt: "2026-06-17T00:00:00Z", updatedAt: "2026-06-17T00:00:00Z" },
+]));
+store.migrate();
+ok(store.listAll()[0].version === "v0", "마이그레이션: 버전없음 → v0");
+ok(globalThis.localStorage.getItem("rv:schema") === "1", "마이그레이션: 스키마 가드 기록");
+const afterMigrate = JSON.stringify(store.listAll());
+store.migrate(); // 멱등 — 가드 때문에 재스탬프 없음
+ok(JSON.stringify(store.listAll()) === afterMigrate, "마이그레이션 멱등(재호출 무변)");
+
+// MD 버전 줄(P1) + 인젝션 이스케이프
+const mdVer = buildMarkdown("x", [
+  { id: "mv", pagePath: "/p", pageUrl: "http://x/p", anchor: { type: "pin", selector: "#z", xPercent: 0, yPercent: 0 }, body: "본문", authorName: "t", version: "1.0](http://evil)", resolved: false, resolvedAt: null, createdAt: "2026-06-17T00:00:00Z", updatedAt: "2026-06-17T00:00:00Z" },
+], { status: "all", generatedAt: gen });
+ok(mdVer.includes("- 버전: `1.0\\]\\(http://evil\\)`"), "MD 버전 줄 + 인젝션 이스케이프");
+store.clear();
+
 console.log(`\n=== selftest: ${pass} passed, ${fail} failed ===`);
 if (fail === 0) {
   console.log("\n--- 샘플 MD (status=all) ---\n" + mdAll);

@@ -151,6 +151,7 @@ export function buildMarkdown(
       if (c.shot) {
         lines.push(`   - 스크린샷: ![#${seq}](images/${c.shot.id}.png)`);
       }
+      if (c.version) lines.push(`   - 버전: \`${escMd(c.version)}\``);
       lines.push(`   - ${c.authorName} · ${shortStamp(c.createdAt)}`);
     }
   }

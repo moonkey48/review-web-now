@@ -116,11 +116,41 @@ input, textarea { font: inherit; color: inherit; }
   padding: 8px 12px 0; font-size: 12px; color: #71717a; font-weight: 600;
 }
 
+/* ── 버전 바 (현재 선택 + 범례겸 표시 멀티선택) ── */
+.rv-verbar { padding: 8px 12px; border-bottom: 1px solid #f1f1f4; }
+.rv-ver-current { display: flex; align-items: center; gap: 8px; }
+.rv-ver-clabel { font-size: 11px; color: #71717a; font-weight: 600; white-space: nowrap; }
+.rv-ver-input { flex: 1; padding: 5px 8px; font-size: 12px; }
+.rv-ver-toolbar { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.rv-ver-hint { font-size: 11px; color: #71717a; font-weight: 600; margin-right: auto; }
+.rv-ver-mini {
+  font-size: 11px; color: #52525b; font-weight: 600;
+  border: 1px solid #e4e4e7; background: #fafafa; border-radius: 6px; padding: 3px 8px;
+}
+.rv-ver-mini:hover { background: #f4f4f5; border-color: #d4d4d8; }
+.rv-verlist {
+  margin-top: 6px; max-height: 132px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.rv-ver-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+.rv-ver-row:hover { background: #f4f4f5; }
+.rv-ver-row input { width: 14px; height: 14px; cursor: pointer; accent-color: #6366f1; flex-shrink: 0; }
+.rv-ver-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--rv-c, #6366f1); flex-shrink: 0; }
+.rv-ver-name { color: #3f3f46; font-weight: 600; word-break: break-all; }
+.rv-ver-now {
+  font-size: 9px; font-weight: 700; color: #4338ca; background: #e0e7ff;
+  border-radius: 4px; padding: 1px 4px;
+}
+.rv-ver-count { margin-left: auto; font-size: 11px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+
 /* ── 핀 ──────────────────────────────────────── */
 .rv-pin {
   position: fixed; z-index: 2147483560;
   width: 26px; height: 26px; border-radius: 50%;
-  background: #6366f1; color: #fff; font-size: 12px; font-weight: 700;
+  background: var(--rv-c, #6366f1); color: #fff; font-size: 12px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
   border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35);
   transform: translate(-50%, -100%);
@@ -220,7 +250,7 @@ input, textarea { font: inherit; color: inherit; }
 .rv-item:hover { background: #f4f4f5; }
 .rv-item-num {
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
-  background: #6366f1; color: #fff; font-size: 10px; font-weight: 700;
+  background: var(--rv-c, #6366f1); color: #fff; font-size: 10px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; margin-top: 1px;
 }
 .rv-item.rv-resolved .rv-item-num { background: #a1a1aa; }

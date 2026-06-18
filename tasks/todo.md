@@ -368,3 +368,91 @@
   무손상(selftest의 구형 anchor가 그대로 렌더). `source`/`vw`는 buildSelector/resolveAnchor에 미사용.
 - **배포**: v0.4.3 — dist SRI `sha384-QG4rehFXJ+Nyy21ybfqqoGTW27wAAmdgK3Mn6ab3dW64fApum54tiC+MZYnV+g1e`,
   README+설치페이지 `@v0.4.3`+새 SRI 갱신, 잔존 `0.4.2` 0건. 태그 생성/푸시 후 jsDelivr 검증.
+
+## 17. 버전 관리 (version management) — 계획 (구현 대기)
+
+요구사항(사용자): 리뷰에 버전(날짜/semver/임의 라벨) 태깅 · 버전별 표시 on/off · 버전별 색 구분
+(현재 버전 강조) · 여러 버전 동시 보기. **DB 없음(localStorage 전용)**.
+
+확정 결정: ①컬러=버전별(현재=인디고 시그니처, 그 외 팔레트) ②현재 버전(태그)과 표시(멀티선택)는
+**분리** ③기존 v0.4.x 무버전 리뷰는 시작 버전 `v0`로 일괄 마이그레이션.
+
+설계 워크플로(5에이전트 병렬설계+적대적검증) 결과 — **충돌 정리(적대적 검증이 이김)**:
+- **색 안정성(최중요)**: 정렬-인덱스(D3)·persisted color map+현재 skip-seed(D2) 둘 다 bump 시 색
+  reshuffle 버그. → **단일 `rv:versions` append-only 레지스트리 + `palette[indexOf]` 고정색**,
+  **현재=인디고는 렌더타임 오버레이**(레지스트리 소비/변형 안 함). bump해도 다른 버전 색 불변.
+- **마이그레이션**: `loadAll` 안(D2) 거부 → **부팅 시 `store.migrate()` 1회**(write→verify→guard,
+  사생활 모드 부분실패 시 가드 미기록·다음 부팅 재시도). 2탭 동시는 멱등+whole-array atomic이라 benign.
+- **`clear()` 버그(전원 놓침)**: `rv:comments`만 지움 → "전체 삭제" 후 stale 빈 visible-set이 새 핀을
+  숨김. → clear()가 버전 키 전부 정리.
+- **컷**: 별도 `versions.ts`(비교자는 범례 정렬용 cosmetic, 색에 미사용) · persisted color map ·
+  djb2 해시 오버플로 · per-pin `isVersionVisible` localStorage 읽기 · MD 헤더 버전 요약 · 초대 `&v=`.
+
+### 최종 localStorage 스키마
+| key | type | 의미 |
+|---|---|---|
+| `rv:comments` | `RvComment[]` | 불변. 각 항목에 optional `version` 추가. |
+| `rv:version` | string | 현재(스탬프) 버전 — 새 리뷰에만 찍힘. init `"v0"`. 자유 텍스트. |
+| `rv:visibleVersions` | JSON string[] | 표시 멀티선택. **부재=전체보기 센티넬**, `[]`=모두 끔. |
+| `rv:versions` | JSON string[] | **append-only** 레지스트리 = 색 인덱스+범례 멤버십 단일 소스. |
+| `rv:schema` | string(int) | 마이그레이션 가드. `<SCHEMA`면 migrate(); 끝나면 기록. |
+
+`SEED_VERSION="v0"`, `SCHEMA=1`, `SIGNATURE="#6366f1"`,
+`PALETTE=["#0ea5e9","#16a34a","#d97706","#ec4899","#8b5cf6","#ef4444","#14b8a6","#a16207"]`.
+공통 코얼레스: `c.version && c.version.trim() ? c.version : "v0"`(빈 문자열도 v0).
+
+### P0 — 핵심 (must ship)
+- [ ] **types.ts**: `RvComment`에 `version?: string` 1개 추가(additive·optional, 구버전 무손상).
+- [ ] **store.ts**: 키/`readStrArr`/`verOf` + `getVersion`/`setVersion`(append-only register)/
+      `getKnownVersions`/`readVisibleRaw`(센티넬 보존)/`setVisibleVersions`/`colorFor(v,current)`
+      (현재=SIGNATURE, 그 외 `PALETTE[indexOf(rv:versions)%len]`). `create()`에 `version:getVersion()`
+      1줄. **`migrate()`**(멱등·write→verify→guard). **`clear()` 확장**(버전 키 전부 제거).
+- [ ] **index.tsx**: 게이트 통과 후 mount 전에 `store.migrate()` 1회.
+- [ ] **app.tsx**: `curVer`/`visRaw(null|[])` state, `verCounts`/`allVersions`/`visibleSet` memo(1회 계산,
+      per-pin 읽기 금지), `setCurVer`/`toggleVisible`(센티넬 보존). 핀 memo는 **per-page 번호(index) 매긴
+      뒤** 버전 필터(번호 안 흔들림), 핀에 `--rv-c` 주입+`colorFor`. Panel `filtered`에 visibleSet 적용,
+      item-num에 `--rv-c`. `.rv-panel-sub` 뒤 **VersionBar**(현재 선택 datalist + 범례겸 멀티선택
+      [체크][스와치][라벨+현재태그][카운트]). export(`prepareExport`)는 전체 그대로(표시는 뷰 필터일 뿐).
+- [ ] **styles.ts**: `.rv-pin`/`.rv-item-num` `background:var(--rv-c,#6366f1)`(resolved-gray·active-outline는
+      뒤 규칙이라 유지), 정적 rgba outline(color-mix 금지), `.rv-verbar`/`.rv-ver-row`/`.rv-ver-swatch` 등.
+- [ ] **selftest.mjs**: clear후 version=v0 · create 스탬프 · bump · 마이그레이션(주입→migrate→v0, 재호출 무변)
+      · 가시성 persist/센티넬 · **색 안정성(bump 후 colorFor(다른버전) 불변 — 적대적이 잡은 회귀)**.
+
+### P1 — nice
+- [ ] **markdown.ts**: 작성자 줄(L154) 앞에 조건부 `- 버전: \`<v>\`` 1줄(escMd, 주입안전). 무버전 fixture는
+      줄 없음 → 기존 단언 유지. 버전 fixture + 인젝션 단언 추가.
+- [ ] VersionBar 헤더 "전체"/"현재만" 퀵토글, Panel 항목 버전 스와치 점.
+
+### P2 — defer
+- [ ] 초대 `?review=&v=` · 크로스탭 라이브 싱크(L162 리스너 확장) · MD 헤더 버전 요약 · `compareVersions`
+      범례 정렬(필요 시 store.ts에 ~10줄 인라인) · per-version 이름변경/내보내기필터 · 팔레트>8 해시.
+
+### 검증 체크리스트
+- [ ] typecheck(`--rv-c as any` 캐스트+optional version만 신규 타입면) · selftest 50→~62 · build(+몇 KB)
+- [ ] 실브라우저(기존 v0.4.x 코멘트 있는 페이지): 마이그레이션 무중복·`rv:schema=1` · v0→0.0.1 bump 시
+      **old v0 핀 색 불변·0.0.1만 인디고(2버전 동시 recolor 없음)** · 멀티선택 동시표시·전체해제=빈 캔버스
+      · resolved 회색 유지·active outline · per-page 번호 토글에도 불변(Detail #n 일치) · **전체삭제 후 새 핀
+      보임(clear 수정)** · 구버전 payload 동일 로드 · export 전체 덤프.
+
+파일: `types.ts`·`store.ts`·`index.tsx`·`app.tsx`·`styles.ts`·`selftest.mjs`(P0) · `markdown.ts`(P1).
+`reviewGate.ts` 무변경(초대 param defer). 신규 파일 없음.
+
+> 선행 대기: v0.4.4(Composer 포커스+⌘Enter 수정) 미배포 — 버전 기능과 함께 배포할지 결정 필요.
+
+### 결과/검토 (v0.5.0)
+- **P0 전부 구현**: `types.ts` `version?` · `store.ts`(verOf/getVersion/setVersion/register(append-only)/
+  getKnownVersions/readVisibleRaw/setVisibleVersions/clearVisible/colorFor + create 스탬프 + migrate +
+  **clear() 버전키 정리**) · `index.tsx` mount 시 `migrate()` · `app.tsx`(curVer/visRaw state, verCounts/
+  allVersions/visibleSet memo, setCurVer/toggleVisible/showAll/showOnlyCurrent, 핀 memo 버전필터+`--rv-c`,
+  Panel 필터+item-num 색, **VersionBar**) · `styles.ts`(`--rv-c` 변수 + verbar).
+- **P1 구현**: `markdown.ts` `- 버전:` 줄(escMd, 무버전 fixture는 줄 없음), VersionBar "전체/현재만" 토글,
+  패널 item-num이 버전색(별도 점 대신 번호 원을 색칠 — 더 단순).
+- **적대적 검증 반영**: 색=레지스트리 삽입순 고정(현재=렌더타임 인디고 오버레이) · migrate는 부팅 1회 ·
+  clear() 버전키 정리 · visible 센티넬(null=전체,[]=끔) · per-pin localStorage 읽기 없이 memo 1회 · 컷
+  (versions.ts·persisted color map·djb2·invite &v=·MD 헤더요약).
+- **검증**: typecheck 통과 · selftest **67 passed/0 failed**(마이그레이션·스탬프·가시성·**색 안정성 bump 회귀**·
+  MD 버전줄 인젝션) · build(widget.js 71.4KB) · **실브라우저(Playwright headless, v0.4.x seed)**:
+  마운트 마이그레이션 v0×2·schema=1 · 2핀 인디고 · VersionBar(현재 v0·범례 1행·카운트 2) · 토글 off=0/on=2 ·
+  bump v0→0.0.1: 범례 2행·**v0 핀이 팔레트색 #0ea5e9(인디고 아님)=색 안정성 통과**·핀 유지. 13항목.
+- **마이그레이션 안전**: 멱등(가드)·write→verify→guard·2탭 benign(idempotent+atomic). 구버전 payload 무손상.
+- **배포**: v0.5.0(Composer 수정 동반). README/설치페이지 @v0.5.0+새 SRI, jsDelivr 검증.

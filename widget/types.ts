@@ -58,6 +58,7 @@ export interface RvComment {
   body: string;
   authorName: string; // MD 리포트 표기용
   shot?: Shot | null; // opt-in 스크린샷 메타 (blob은 IndexedDB)
+  version?: string; // 리뷰 버전 태그(자유 문자열: 날짜·semver·임의 라벨). 구버전 페이로드엔 없어 optional; 읽을 때 "v0" 폴백.
   resolved: boolean;
   resolvedAt: string | null;
   createdAt: string; // ISO
