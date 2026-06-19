@@ -259,6 +259,12 @@ input, textarea { font: inherit; color: inherit; }
   border: 1px solid #d4d4d8; border-radius: 999px; padding: 3px 9px; background: #fff;
 }
 .rv-resolve-btn.rv-on { color: #047857; border-color: #6ee7b7; background: #ecfdf5; }
+.rv-del-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: #dc2626;
+  border: 1px solid #fecaca; border-radius: 999px; padding: 3px 9px; background: #fef2f2;
+}
+.rv-del-btn:hover { background: #fee2e2; border-color: #fca5a5; }
 
 /* ── 패널 ────────────────────────────────────── */
 .rv-panel {
@@ -322,6 +328,73 @@ input, textarea { font: inherit; color: inherit; }
 .rv-export { padding: 8px 12px; border-top: 1px solid #f1f1f4; }
 .rv-export-row { display: flex; gap: 6px; align-items: center; }
 .rv-export-hint { font-size: 11px; color: #a1a1aa; margin-left: auto; white-space: nowrap; }
+
+/* ── 내보내기 모달 (.rv-lock-backdrop 위) ── */
+.rv-exmodal {
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(80vh, 640px);
+  display: flex; flex-direction: column;
+  border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,.28);
+}
+.rv-exmodal .rv-card-head { padding: 13px 16px; }
+.rv-exmodal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.rv-ex-label { font-size: 11px; font-weight: 700; color: #71717a; margin-bottom: 6px; }
+/* 방식 세그먼티드 */
+.rv-ex-methods { display: flex; gap: 6px; }
+.rv-ex-method {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 9px 4px; border: 1px solid #e4e4e7; border-radius: 10px; background: #fafafa;
+  font-size: 11px; font-weight: 600; color: #52525b;
+  transition: border-color .12s ease, background .12s ease;
+}
+.rv-ex-method:hover { border-color: #d4d4d8; background: #f4f4f5; }
+.rv-ex-method:focus-visible { outline: 2px solid rgba(99,102,241,.55); outline-offset: 1px; }
+.rv-ex-method.rv-on { border-color: #6366f1; background: #eef2ff; color: #18181b; box-shadow: inset 0 0 0 1px #6366f1; }
+.rv-ex-method-ico { font-size: 16px; line-height: 1; }
+/* 버전 칩 체크박스 */
+.rv-ex-vers { display: flex; flex-wrap: wrap; gap: 6px; }
+.rv-ex-ver {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 4px 10px 4px 7px; border: 1px solid #e4e4e7; border-radius: 999px; background: #fff;
+  font-size: 12px; font-weight: 600; color: #3f3f46; max-width: 100%;
+}
+.rv-ex-ver:hover { background: #f4f4f5; }
+.rv-ex-ver.rv-off { opacity: .45; }
+.rv-ex-ver .rv-ver-swatch { width: 11px; height: 11px; }
+.rv-ex-ver-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-ex-ver-count { flex-shrink: 0; font-size: 10px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+/* 경고 (기존 경고색 #fef3c7/#b45309 재사용) */
+.rv-ex-warn {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 9px 11px; border-radius: 10px; font-size: 11px; line-height: 1.55;
+  background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+}
+.rv-ex-warn b { color: #78350f; }
+.rv-ex-warn-fix { color: #4338ca; font-weight: 700; text-decoration: underline; white-space: nowrap; }
+.rv-ex-warn-fix:hover { color: #3730a3; }
+/* 미리보기 */
+.rv-ex-preview { border: 1px solid #f1f1f4; border-radius: 10px; overflow: hidden; }
+.rv-ex-preview-list { max-height: 200px; overflow-y: auto; }
+.rv-ex-prow { display: flex; gap: 8px; align-items: flex-start; padding: 8px 11px; }
+.rv-ex-prow + .rv-ex-prow { border-top: 1px solid #f4f4f5; }
+.rv-ex-pnum {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--rv-c, #6366f1); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.rv-ex-pbody { min-width: 0; flex: 1; display: block; }
+.rv-ex-ptext {
+  font-size: 12px; color: #3f3f46; display: -webkit-box; word-break: break-word;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.rv-ex-pmeta { display: block; font-size: 10px; color: #a1a1aa; margin-top: 2px; }
+.rv-ex-empty { padding: 22px 12px; text-align: center; color: #a1a1aa; font-size: 12px; }
+/* 하단 액션 */
+.rv-exmodal-foot {
+  padding: 12px 16px; border-top: 1px solid #f1f1f4;
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+}
+.rv-ex-go { min-width: 120px; justify-content: center; text-align: center; }
 .rv-mode-btn {
   width: calc(100% - 24px); margin: 10px 12px 2px;
   background: #6366f1; color: #fff; border-radius: 8px;
