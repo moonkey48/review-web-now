@@ -68,6 +68,22 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+// 단축키 가드 — 입력 요소에 포커스가 있으면 단축키를 발동하지 않는다(Shadow DOM 관통).
+function isEditableFocused(): boolean {
+  let el: Element | null = document.activeElement;
+  while (el && (el as any).shadowRoot && (el as any).shadowRoot.activeElement) {
+    el = (el as any).shadowRoot.activeElement;
+  }
+  if (!el) return false;
+  const tag = el.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    (el as HTMLElement).isContentEditable === true
+  );
+}
+
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -85,6 +101,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [path, setPath] = useState(location.pathname);
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
   const [panelOpen, setPanelOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false); // 내보내기 모달
   const [mode, setMode] = useState(false);
   const [sticky, setSticky] = useState(false); // 연속 코멘트 모드 — 한 건 남겨도 계속 켜둔다
   const [draft, setDraft] = useState<{ x: number; y: number; anchor: Anchor } | null>(
@@ -268,6 +285,37 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Alt+C: 코멘트 모드 토글 (안 쓰는 단축키). 입력 중·작성·내보내기·패널 열림·잠금 시엔 무시.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.code !== "KeyC" && e.key.toLowerCase() !== "c") return;
+      if (locked || draft || exportOpen || panelOpen || isEditableFocused()) return;
+      e.preventDefault();
+      if (sticky) {
+        setMode(false);
+        setSticky(false);
+      } else {
+        setActiveId(null);
+        setDraft(null);
+        setSticky(true);
+        setMode(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked, draft, exportOpen, panelOpen, sticky]);
+
+  // 활성 코멘트의 버전을 숨기면(또는 해결됨 필터로 빠지면) 상세 팝업도 함께 닫는다.
+  useEffect(() => {
+    if (!activeId) return;
+    const c = comments.find((x) => x.id === activeId);
+    if (!c) return;
+    if (!visibleSet.has(store.verOf(c)) || (hideResolved && c.resolved)) {
+      setActiveId(null);
+    }
+  }, [activeId, comments, visibleSet, hideResolved]);
+
   // 잠금(공용 비밀번호 미통과) 상태에선 위젯 대신 입장 화면만 보여준다.
   if (locked) {
     return (
@@ -390,67 +438,64 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     }
   };
 
-  const exportStatus: "all" | "open" = hideResolved ? "open" : "all";
-
-  const prepareExport = async () => {
-    await waitForCaptures();
-    const all = store.listAll();
-    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
-    const shots = await getShots(
-      visible.filter((c) => c.shot).map((c) => c.shot!.id),
-    );
-    // IndexedDB blob이 사라진 깨진 메타는 MD에서 이미지 참조를 만들지 않는다.
-    const commentsForMd = all.map((c) =>
-      c.shot && !shots.has(c.shot.id) ? { ...c, shot: null } : c,
-    );
-    const md = buildMarkdown(SITE_TITLE, commentsForMd, { status: exportStatus });
-    return { md, shots };
-  };
-
-  const copyMd = async () => {
-    const { md, shots } = await prepareExport();
-    const ok = await copyText(md);
-    showToast(
-      ok
-        ? shots.size
-          ? `MD를 복사했어요 · 이미지 ${shots.size}장은 다운로드에 포함돼요`
-          : "MD를 클립보드에 복사했어요"
-        : "복사 실패 — 다운로드를 사용하세요",
-    );
-  };
-
-  const downloadMd = async () => {
-    const { md, shots } = await prepareExport();
-    if (shots.size) {
-      await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
-      showToast(`review-*.zip 다운로드를 시작했어요 · 이미지 ${shots.size}장`);
-      return;
-    }
-    downloadText(`review-${fileStamp()}.md`, md);
-    showToast("review-*.md 다운로드를 시작했어요");
-  };
-
-  // 스크린샷 포함 내보내기 — 폴더 저장(FS Access) 우선, 미지원/실패 시 zip 폴백.
-  const exportFilesWithShots = async () => {
-    const { md, shots } = await prepareExport();
-    if (!shots.size) {
-      downloadText(`review-${fileStamp()}.md`, md);
-      showToast("첨부된 스크린샷이 없어 MD만 다운로드했어요");
-      return;
-    }
-    if (fsSupported()) {
-      showToast("저장할 폴더를 선택하세요…");
-      const r = await saveToFolder("review.md", md, shots);
-      if (r === "ok") {
-        showToast(`폴더에 저장했어요 · 이미지 ${shots.size}장`);
-        return;
+  // 통합 내보내기 — 모달이 고른 리뷰 부분집합을 method별로 내보낸다.
+  const runExport = useCallback(
+    async (
+      method: "copy" | "zip" | "folder",
+      selected: RvComment[],
+      includeResolved: boolean,
+    ): Promise<"ok" | "cancel" | "fail"> => {
+      await waitForCaptures();
+      const status: "all" | "open" = includeResolved ? "all" : "open";
+      const shots = await getShots(
+        selected.filter((c) => c.shot).map((c) => c.shot!.id),
+      );
+      // IndexedDB blob이 사라진 깨진 메타는 MD에서 이미지 참조를 만들지 않는다.
+      const commentsForMd = selected.map((c) =>
+        c.shot && !shots.has(c.shot.id) ? { ...c, shot: null } : c,
+      );
+      const md = buildMarkdown(SITE_TITLE, commentsForMd, { status });
+      try {
+        if (method === "copy") {
+          const ok = await copyText(md);
+          showToast(ok ? "MD를 클립보드에 복사했어요" : "복사 실패 — 다운로드를 사용하세요");
+          return ok ? "ok" : "fail";
+        }
+        if (method === "zip") {
+          if (shots.size) {
+            await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
+            showToast(`ZIP 다운로드를 시작했어요 · 이미지 ${shots.size}장`);
+          } else {
+            downloadText(`review-${fileStamp()}.md`, md);
+            showToast("MD 다운로드를 시작했어요");
+          }
+          return "ok";
+        }
+        // folder — FS Access 폴더 저장(미지원/실패 시 zip 폴백)
+        if (!shots.size) {
+          downloadText(`review-${fileStamp()}.md`, md);
+          showToast("첨부 이미지가 없어 MD만 저장했어요");
+          return "ok";
+        }
+        if (fsSupported()) {
+          showToast("저장할 폴더를 선택하세요…");
+          const r = await saveToFolder("review.md", md, shots);
+          if (r === "ok") {
+            showToast(`폴더에 저장했어요 · 이미지 ${shots.size}장`);
+            return "ok";
+          }
+          if (r === "cancel") return "cancel";
+        }
+        await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
+        showToast(`zip으로 내보냈어요 · 이미지 ${shots.size}장`);
+        return "ok";
+      } catch {
+        showToast("내보내기 실패");
+        return "fail";
       }
-      if (r === "cancel") return; // 사용자가 선택을 취소
-      // unsupported/error → zip 폴백
-    }
-    await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
-    showToast(`zip으로 내보냈어요 · 이미지 ${shots.size}장`);
-  };
+    },
+    [waitForCaptures, showToast],
+  );
 
   const clearAll = () => {
     if (!window.confirm("이 사이트의 모든 코멘트를 삭제할까요? 되돌릴 수 없습니다.")) {
@@ -582,9 +627,10 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           setName={setName}
           onPageComment={openPageComposer}
           onGoTo={goTo}
-          onCopyMd={copyMd}
-          onDownloadMd={downloadMd}
-          onExportFiles={exportFilesWithShots}
+          onOpenExport={() => {
+            setPanelOpen(false);
+            setExportOpen(true);
+          }}
           onClearAll={clearAll}
           pendingShots={pendingShots}
           ver={{
@@ -609,6 +655,15 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
               onHide();
             }
           }}
+        />
+      ) : null}
+
+      {exportOpen ? (
+        <ExportModal
+          comments={allComments}
+          colorFor={(v) => store.colorFor(v, curVer)}
+          onRun={runExport}
+          onClose={() => setExportOpen(false)}
         />
       ) : null}
     </div>
@@ -687,7 +742,7 @@ function ModeBar({ picking, onExit }: { picking: boolean; onExit: () => void }) 
 function StartBar({ onStart }: { onStart: () => void }) {
   return (
     <button className="rv-startbar" onClick={onStart}>
-      📍 코멘트 모드 시작
+      📍 코멘트 모드 시작 <span className="rv-kbd">Alt+C</span>
     </button>
   );
 }
@@ -960,6 +1015,9 @@ function Detail({
           >
             ✓ {comment.resolved ? "해결됨" : "해결"}
           </button>
+          <button className="rv-del-btn" onClick={del} title="이 코멘트 삭제">
+            🗑 삭제
+          </button>
           <button className="rv-icon-btn" onClick={onClose}>
             ✕
           </button>
@@ -980,7 +1038,6 @@ function Detail({
                 >
                   수정
                 </button>
-                <button onClick={del}>삭제</button>
               </span>
             ) : null}
           </div>
@@ -1145,6 +1202,227 @@ function VersionBar({ ver }: { ver: VerProps }) {
   );
 }
 
+/* ── 내보내기 모달 (방식·버전선택·미리보기·경고 통합) ── */
+function ExportModal({
+  comments,
+  colorFor,
+  onRun,
+  onClose,
+}: {
+  comments: RvComment[];
+  colorFor: (v: string) => string;
+  onRun: (
+    method: "copy" | "zip" | "folder",
+    selected: RvComment[],
+    includeResolved: boolean,
+  ) => Promise<"ok" | "cancel" | "fail">;
+  onClose: () => void;
+}) {
+  // 코멘트에 실제 존재하는 버전 + 카운트
+  const versions = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of comments) {
+      const v = store.verOf(c);
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+    return [...m.entries()].map(([version, count]) => ({ version, count }));
+  }, [comments]);
+
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(versions.map((v) => v.version)),
+  );
+  const [includeResolved, setIncludeResolved] = useState(true);
+  const [method, setMethod] = useState<"copy" | "zip" | "folder">("copy");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<"" | "ok" | "fail">("");
+
+  const selected = useMemo(
+    () =>
+      comments.filter(
+        (c) =>
+          checked.has(store.verOf(c)) && (includeResolved || !c.resolved),
+      ),
+    [comments, checked, includeResolved],
+  );
+  const shotCount = selected.filter((c) => c.shot).length;
+  const warn = method === "copy" && shotCount > 0;
+
+  const toggleVer = (v: string) =>
+    setChecked((prev) => {
+      const n = new Set(prev);
+      n.has(v) ? n.delete(v) : n.add(v);
+      return n;
+    });
+
+  const go = async () => {
+    if (!selected.length || busy) return;
+    setBusy(true);
+    setResult("");
+    const r = await onRun(method, selected, includeResolved);
+    setBusy(false);
+    if (r === "ok") {
+      setResult("ok");
+      window.setTimeout(onClose, 700);
+    } else if (r === "fail") {
+      setResult("fail");
+    }
+    // cancel → 모달 유지
+  };
+
+  const METHODS = [
+    ["copy", "📋", "MD 복사"],
+    ["zip", "⬇", "ZIP 다운로드"],
+    ["folder", "🗂", "폴더 저장"],
+  ] as const;
+  const goLabel = busy
+    ? "처리 중…"
+    : result === "ok"
+      ? "완료 ✓"
+      : result === "fail"
+        ? "실패 — 다시"
+        : { copy: "MD 복사", zip: "ZIP 다운로드", folder: "폴더에 저장" }[method];
+
+  return (
+    <div className="rv-lock-backdrop">
+      <div className="rv-card rv-exmodal">
+        <div className="rv-card-head">
+          <span className="rv-card-title">내보내기</span>
+          <button className="rv-icon-btn" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="rv-exmodal-body">
+          {/* 방식 */}
+          <div>
+            <div className="rv-ex-label">방식</div>
+            <div className="rv-ex-methods" role="radiogroup" aria-label="내보내기 방식">
+              {METHODS.map(([m, ico, lbl]) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={method === m}
+                  className={`rv-ex-method${method === m ? " rv-on" : ""}`}
+                  onClick={() => setMethod(m)}
+                >
+                  <span className="rv-ex-method-ico">{ico}</span>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 버전 선택 */}
+          <div>
+            <div className="rv-ex-label">내보낼 버전</div>
+            <div className="rv-ex-vers">
+              {versions.map(({ version, count }) => {
+                const on = checked.has(version);
+                return (
+                  <label
+                    key={version}
+                    className={`rv-ex-ver${on ? "" : " rv-off"}`}
+                    title={version}
+                  >
+                    <input
+                      type="checkbox"
+                      className="rv-ver-cb"
+                      checked={on}
+                      onChange={() => toggleVer(version)}
+                    />
+                    <span
+                      className="rv-ver-swatch"
+                      style={{ ["--rv-c" as any]: colorFor(version) }}
+                    />
+                    <span className="rv-ex-ver-name">{version}</span>
+                    <span className="rv-ex-ver-count">{count}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <label className="rv-check" style={{ marginTop: "8px" }}>
+              <input
+                type="checkbox"
+                checked={!includeResolved}
+                onChange={(e: Event) =>
+                  setIncludeResolved(
+                    !(e.currentTarget as HTMLInputElement).checked,
+                  )
+                }
+              />
+              해결됨 제외
+            </label>
+          </div>
+
+          {/* 스크린샷 경고 (MD 복사 + 샷 있을 때만) */}
+          {warn ? (
+            <div className="rv-ex-warn">
+              <span aria-hidden="true">⚠</span>
+              <span>
+                스크린샷 <b>{shotCount}개</b>는 클립보드 복사에 안 담겨 깨질 수 있어요.
+                이미지까지 포함하려면{" "}
+                <button
+                  type="button"
+                  className="rv-ex-warn-fix"
+                  onClick={() => setMethod("zip")}
+                >
+                  ZIP으로 받기
+                </button>
+                를 권장해요.
+              </span>
+            </div>
+          ) : null}
+
+          {/* 미리보기 */}
+          <div>
+            <div className="rv-ex-label">포함될 리뷰 {selected.length}개</div>
+            <div className="rv-ex-preview">
+              {selected.length === 0 ? (
+                <div className="rv-ex-empty">선택된 리뷰가 없어요</div>
+              ) : (
+                <div className="rv-ex-preview-list">
+                  {selected.map((c, i) => (
+                    <div key={c.id} className="rv-ex-prow">
+                      <span
+                        className="rv-ex-pnum"
+                        style={{ ["--rv-c" as any]: colorFor(store.verOf(c)) }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="rv-ex-pbody">
+                        <span className="rv-ex-ptext">{c.body}</span>
+                        <span className="rv-ex-pmeta">
+                          {c.authorName} · {c.pagePath}
+                          {c.shot ? " · 📷" : ""}
+                          {c.resolved ? " · ✓해결" : ""}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rv-exmodal-foot">
+          <button className="rv-btn rv-btn-ghost" onClick={onClose}>
+            취소
+          </button>
+          <button
+            className="rv-btn rv-btn-primary rv-ex-go"
+            disabled={!selected.length || busy}
+            onClick={go}
+          >
+            {goLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── 패널 ─────────────────────────────────────── */
 function Panel({
   comments,
@@ -1156,9 +1434,7 @@ function Panel({
   setName,
   onPageComment,
   onGoTo,
-  onCopyMd,
-  onDownloadMd,
-  onExportFiles,
+  onOpenExport,
   onClearAll,
   pendingShots,
   ver,
@@ -1174,9 +1450,7 @@ function Panel({
   setName: (n: string) => void;
   onPageComment: () => void;
   onGoTo: (c: RvComment) => void;
-  onCopyMd: () => void;
-  onDownloadMd: () => void;
-  onExportFiles: () => void;
+  onOpenExport: () => void;
   onClearAll: () => void;
   pendingShots: number;
   ver: VerProps;
@@ -1271,28 +1545,15 @@ function Panel({
 
       <div className="rv-export">
         <div className="rv-export-row">
-          <button className="rv-btn rv-btn-primary" onClick={onCopyMd}>
-            📋 MD 복사
-          </button>
-          <button className="rv-btn rv-btn-ghost" onClick={onDownloadMd}>
-            ⬇ 다운로드
+          <button
+            className="rv-btn rv-btn-primary"
+            style={{ flex: "1" }}
+            onClick={onOpenExport}
+          >
+            📤 내보내기
           </button>
           <span className="rv-export-hint">{exportHint}</span>
         </div>
-        {shotCount > 0 || pendingShots > 0 ? (
-          <div className="rv-export-row" style={{ marginTop: "6px" }}>
-            <button
-              className="rv-btn rv-btn-ghost"
-              style={{ flex: "1" }}
-              onClick={onExportFiles}
-            >
-              🗂 폴더로 저장
-            </button>
-            <span className="rv-export-hint">
-              {pendingShots > 0 ? "처리 완료 후 저장" : `이미지 ${shotCount}장`}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       {editingName ? (
