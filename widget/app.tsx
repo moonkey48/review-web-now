@@ -186,14 +186,15 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     [visRaw, allVersions],
   );
 
-  // 현재 버전 변경 — 명시 가시 집합이 있으면 새 버전을 함께 켠다(센티넬은 보존).
+  // 현재 버전 선택/생성 — 그 버전만 보이게(포커스). 여러 버전 동시 보기는 아래 멀티선택으로.
   const setCurVer = useCallback(
     (v: string) => {
       const t = v.trim();
       if (!t) return;
       store.setVersion(t);
       setCurVerState(t);
-      setVisRaw((prev) => (prev === null ? null : prev.includes(t) ? prev : [...prev, t]));
+      store.setVisibleVersions([t]);
+      setVisRaw([t]);
       bumpData();
     },
     [bumpData],
@@ -1151,7 +1152,7 @@ function VersionBar({ ver }: { ver: VerProps }) {
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
         >
-          표시 <b>{shown}</b>/{ver.all.length}{" "}
+          여러 버전 표시 <b>{shown}</b>/{ver.all.length}{" "}
           <span className="rv-ver-caret">▾</span>
         </button>
       </div>

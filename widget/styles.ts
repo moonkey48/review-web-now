@@ -118,8 +118,8 @@ input, textarea { font: inherit; color: inherit; }
 
 /* ── 버전 바 (ZONE1 항상 보임: 스위치+생성+표시토글 / ZONE2 접이식: 표시할 버전) ── */
 .rv-verbar { border-bottom: 1px solid #f1f1f4; }
-/* ZONE 1 — 항상 보이는 한 줄 */
-.rv-ver-bar1 { display: flex; align-items: center; gap: 6px; padding: 8px 12px; }
+/* ZONE 1 — 항상 보이는 줄(긴 버전명·라벨이면 줄바꿈으로 안전) */
+.rv-ver-bar1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; row-gap: 6px; padding: 8px 12px; }
 /* 현재 작성 버전 스위치(네이티브 select) — 긴 라벨은 max-width로 클립(가로 오버플로 방지) */
 .rv-ver-select {
   flex: 0 1 auto; min-width: 0; max-width: 150px;
