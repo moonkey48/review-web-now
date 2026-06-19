@@ -98,6 +98,10 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [, setTick] = useState(0); // 레이아웃 변화 시 핀 재배치용
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const captureJobs = useRef<Promise<void>[]>([]);
+  const [pendingShots, setPendingShots] = useState(0);
+  const [curVer, setCurVerState] = useState(() => store.getVersion()); // 현재(스탬프) 버전
+  const [visRaw, setVisRaw] = useState<string[] | null>(() => store.readVisibleRaw()); // null=전체 센티넬, []=모두 끔
 
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -115,8 +119,88 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
 
   const bumpData = useCallback(() => setRev((r) => r + 1), []);
 
+  const trackCapture = useCallback((job: Promise<void>) => {
+    captureJobs.current = [...captureJobs.current, job];
+    setPendingShots(captureJobs.current.length);
+    void job.finally(() => {
+      captureJobs.current = captureJobs.current.filter((j) => j !== job);
+      setPendingShots(captureJobs.current.length);
+    });
+  }, []);
+
+  const waitForCaptures = useCallback(async () => {
+    while (captureJobs.current.length) {
+      const jobs = [...captureJobs.current];
+      showToast(`스크린샷 ${jobs.length}장 처리 중…`);
+      await Promise.allSettled(jobs);
+    }
+  }, [showToast]);
+
   const comments = useMemo(() => store.list(path), [path, rev]);
   const allComments = useMemo(() => store.listAll(), [rev]);
+
+  // 버전별 코멘트 수(전체 서비스 기준).
+  const verCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of allComments) {
+      const v = store.verOf(c);
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+    return m;
+  }, [allComments]);
+  // 표시 후보 버전 목록 = 레지스트리(고정 색·순서) ∪ 현재 ∪ 코멘트 실재.
+  const allVersions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const push = (v: string) => {
+      if (v && !seen.has(v)) {
+        seen.add(v);
+        out.push(v);
+      }
+    };
+    for (const v of store.getKnownVersions()) push(v);
+    push(curVer);
+    for (const v of verCounts.keys()) push(v);
+    return out;
+  }, [curVer, verCounts, rev]);
+  // 가시 집합 1회 계산(핀마다 localStorage 읽지 않음). null 센티넬=전체.
+  const visibleSet = useMemo(
+    () => (visRaw === null ? new Set(allVersions) : new Set(visRaw)),
+    [visRaw, allVersions],
+  );
+
+  // 현재 버전 변경 — 명시 가시 집합이 있으면 새 버전을 함께 켠다(센티넬은 보존).
+  const setCurVer = useCallback(
+    (v: string) => {
+      const t = v.trim();
+      if (!t) return;
+      store.setVersion(t);
+      setCurVerState(t);
+      setVisRaw((prev) => (prev === null ? null : prev.includes(t) ? prev : [...prev, t]));
+      bumpData();
+    },
+    [bumpData],
+  );
+  // 버전 표시 토글 — 첫 토글 시 전체 센티넬을 구체 집합으로 구체화.
+  const toggleVisible = useCallback(
+    (v: string) => {
+      setVisRaw((prev) => {
+        const base = prev === null ? allVersions : prev;
+        const n = base.includes(v) ? base.filter((x) => x !== v) : [...base, v];
+        store.setVisibleVersions(n);
+        return n;
+      });
+    },
+    [allVersions],
+  );
+  const showAllVersions = useCallback(() => {
+    store.clearVisible();
+    setVisRaw(null);
+  }, []);
+  const showOnlyCurrent = useCallback(() => {
+    store.setVisibleVersions([curVer]);
+    setVisRaw([curVer]);
+  }, [curVer]);
 
   // SPA 내비게이션 감지 (pushState/replaceState 훅 + popstate)
   useEffect(() => {
@@ -251,27 +335,31 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     // 연속 코멘트 모드: 한 건 남겨도 곧장 다음 위치를 찍을 수 있게 모드를 되살린다
     if (sticky) setMode(true);
     // 스크린샷은 등록 후 비동기로 첨부(html2canvas 지연 로드 → IndexedDB)
-    if (target) {
+    const captureTarget = target;
+    if (captureTarget) {
       // 캡처 시작 시점의 경로·배지 번호를 고정(await 중 SPA 이동 대비)
       const capturePath = pathRef.current;
       const badge = store.list(capturePath).length; // 작성 순번 — 스크린샷 배지
-      showToast("스크린샷 캡처 중…");
-      try {
-        const cap = await captureElement(target, { badge });
-        if (pathRef.current !== capturePath || !target.isConnected) {
-          // 캡처 도중 SPA 이동/요소 분리 — 엉뚱한 페이지에 첨부하지 않고 조용히 스킵
-        } else if (!cap) {
-          showToast("스크린샷 캡처 실패");
-        } else if (await putShot(c.id, cap.blob)) {
-          store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
-          bumpData();
-          showToast("스크린샷을 첨부했어요");
-        } else {
-          showToast("스크린샷 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+      const captureJob = (async () => {
+        showToast("스크린샷 캡처 중…");
+        try {
+          const cap = await captureElement(captureTarget, { badge });
+          if (pathRef.current !== capturePath || !captureTarget.isConnected) {
+            // 캡처 도중 SPA 이동/요소 분리 — 엉뚱한 페이지에 첨부하지 않고 조용히 스킵
+          } else if (!cap) {
+            showToast("스크린샷 캡처 실패");
+          } else if (await putShot(c.id, cap.blob)) {
+            store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
+            bumpData();
+            showToast("스크린샷을 첨부했어요");
+          } else {
+            showToast("스크린샷 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+          }
+        } catch {
+          showToast("스크린샷 캡처 실패 — 네트워크/CSP를 확인하세요");
         }
-      } catch {
-        showToast("스크린샷 캡처 실패 — 네트워크/CSP를 확인하세요");
-      }
+      })();
+      trackCapture(captureJob);
     }
   };
 
@@ -304,26 +392,52 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
 
   const exportStatus: "all" | "open" = hideResolved ? "open" : "all";
 
-  const copyMd = async () => {
-    const md = buildMarkdown(SITE_TITLE, store.listAll(), { status: exportStatus });
-    const ok = await copyText(md);
-    showToast(ok ? "MD를 클립보드에 복사했어요" : "복사 실패 — 다운로드를 사용하세요");
+  const prepareExport = async () => {
+    await waitForCaptures();
+    const all = store.listAll();
+    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
+    const shots = await getShots(
+      visible.filter((c) => c.shot).map((c) => c.shot!.id),
+    );
+    // IndexedDB blob이 사라진 깨진 메타는 MD에서 이미지 참조를 만들지 않는다.
+    const commentsForMd = all.map((c) =>
+      c.shot && !shots.has(c.shot.id) ? { ...c, shot: null } : c,
+    );
+    const md = buildMarkdown(SITE_TITLE, commentsForMd, { status: exportStatus });
+    return { md, shots };
   };
 
-  const downloadMd = () => {
-    const md = buildMarkdown(SITE_TITLE, store.listAll(), { status: exportStatus });
+  const copyMd = async () => {
+    const { md, shots } = await prepareExport();
+    const ok = await copyText(md);
+    showToast(
+      ok
+        ? shots.size
+          ? `MD를 복사했어요 · 이미지 ${shots.size}장은 다운로드에 포함돼요`
+          : "MD를 클립보드에 복사했어요"
+        : "복사 실패 — 다운로드를 사용하세요",
+    );
+  };
+
+  const downloadMd = async () => {
+    const { md, shots } = await prepareExport();
+    if (shots.size) {
+      await downloadZip(`review-${fileStamp()}.zip`, "review.md", md, shots);
+      showToast(`review-*.zip 다운로드를 시작했어요 · 이미지 ${shots.size}장`);
+      return;
+    }
     downloadText(`review-${fileStamp()}.md`, md);
     showToast("review-*.md 다운로드를 시작했어요");
   };
 
   // 스크린샷 포함 내보내기 — 폴더 저장(FS Access) 우선, 미지원/실패 시 zip 폴백.
   const exportFilesWithShots = async () => {
-    const all = store.listAll();
-    const md = buildMarkdown(SITE_TITLE, all, { status: exportStatus });
-    const visible = exportStatus === "open" ? all.filter((c) => !c.resolved) : all;
-    const shots = await getShots(
-      visible.filter((c) => c.shot).map((c) => c.shot!.id),
-    );
+    const { md, shots } = await prepareExport();
+    if (!shots.size) {
+      downloadText(`review-${fileStamp()}.md`, md);
+      showToast("첨부된 스크린샷이 없어 MD만 다운로드했어요");
+      return;
+    }
     if (fsSupported()) {
       showToast("저장할 폴더를 선택하세요…");
       const r = await saveToFolder("review.md", md, shots);
@@ -352,12 +466,28 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   // 전체 서비스 기준 미해결 카운트
   const unresolved = allComments.filter((c) => !c.resolved).length;
   const pins = comments
+    // 번호는 버전 필터 전에 per-page 인덱스로 매긴다 — 버전을 토글해도 번호가 흔들리지 않고 MD/스레드와 일치.
     .map((c, i) => ({ c, n: i + 1 }))
-    .filter(({ c }) => c.anchor?.type === "pin" && (!hideResolved || !c.resolved))
-    .map((item) => ({ ...item, pos: resolveAnchor(item.c.anchor as Anchor) }))
     .filter(
-      (item): item is { c: RvComment; n: number; pos: { x: number; y: number } } =>
-        item.pos !== null,
+      ({ c }) =>
+        c.anchor?.type === "pin" &&
+        (!hideResolved || !c.resolved) &&
+        visibleSet.has(store.verOf(c)),
+    )
+    .map((item) => ({
+      ...item,
+      pos: resolveAnchor(item.c.anchor as Anchor),
+      color: store.colorFor(store.verOf(item.c), curVer),
+    }))
+    .filter(
+      (
+        item,
+      ): item is {
+        c: RvComment;
+        n: number;
+        pos: { x: number; y: number };
+        color: string;
+      } => item.pos !== null,
     );
 
   const active = activeId ? (comments.find((c) => c.id === activeId) ?? null) : null;
@@ -383,7 +513,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
         <DraftHighlight anchor={draft.anchor} />
       ) : null}
 
-      {pins.map(({ c, n, pos }) => (
+      {pins.map(({ c, n, pos, color }) => (
         <button
           key={c.id}
           className={`rv-pin${c.resolved ? " rv-pin-resolved" : ""}${
@@ -391,6 +521,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           }`}
           // 코멘트 모드 중에는 핀이 클릭을 가로채지 않게 투과시킨다
           style={{
+            ["--rv-c" as any]: color, // 버전별 색(해결됨 회색·활성 outline은 CSS 후순위 규칙으로 유지)
             left: pos.x + "px",
             top: pos.y + "px",
             pointerEvents: mode ? "none" : "auto",
@@ -406,6 +537,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           x={draft.x}
           y={draft.y}
           isPage={draft.anchor.type === "page"}
+          needsShot={draft.anchor.type === "pin" && !!draft.anchor.needsShot}
           name={name}
           onSubmit={submitDraft}
           onCancel={cancelDraft}
@@ -454,6 +586,19 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           onDownloadMd={downloadMd}
           onExportFiles={exportFilesWithShots}
           onClearAll={clearAll}
+          pendingShots={pendingShots}
+          ver={{
+            current: curVer,
+            setCurrent: setCurVer,
+            all: allVersions,
+            counts: verCounts,
+            visible: visibleSet,
+            toggle: toggleVisible,
+            showAll: showAllVersions,
+            showOnlyCurrent,
+            colorFor: (v: string) => store.colorFor(v, curVer),
+            known: store.getKnownVersions(),
+          }}
           onClose={() => setPanelOpen(false)}
           onHide={() => {
             if (
@@ -651,6 +796,7 @@ function Composer({
   x,
   y,
   isPage,
+  needsShot,
   name,
   onSubmit,
   onCancel,
@@ -658,14 +804,22 @@ function Composer({
   x: number;
   y: number;
   isPage: boolean;
+  needsShot: boolean;
   name: string;
   onSubmit: (text: string, author: string, shoot: boolean) => void;
   onCancel: () => void;
 }) {
   const [text, setText] = useState("");
   const [author, setAuthor] = useState(name);
-  const [shoot, setShoot] = useState(false); // 스크린샷 첨부 — 기본 OFF
+  // 스크린샷 첨부 — 기본 OFF. 단 빈 요소(텍스트·이름 없음)는 스크린샷이 사실상 유일한 단서라 기본 ON(자동 캡처는 아님 — 등록 시 동의된 캡처만).
+  const [shoot, setShoot] = useState(needsShot);
   const place = clampPos(x + 10, y + 10, 290, 230);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // Shadow DOM에선 autoFocus 속성이 신뢰성이 낮아, 마운트 후 코멘트 입력칸에 명시적으로 포커스한다.
+  useEffect(() => {
+    textRef.current?.focus();
+  }, []);
 
   const submit = () => {
     const t = text.trim();
@@ -678,6 +832,13 @@ function Composer({
     <div
       className="rv-card rv-composer"
       style={{ left: place.left + "px", top: place.top + "px" }}
+      onKeyDown={(e: KeyboardEvent) => {
+        // 폼 어디에 포커스가 있든(스크린샷 체크박스 포함) ⌘/Ctrl+Enter로 등록되게 컨테이너에서 처리.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          submit();
+        }
+      }}
     >
       <div className="rv-card-title">
         {isPage ? "이 페이지에 코멘트" : "이 위치에 코멘트"}
@@ -691,40 +852,35 @@ function Composer({
           onInput={(e: Event) =>
             setAuthor((e.currentTarget as HTMLInputElement).value)
           }
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submit();
-            }
-          }}
         />
       ) : null}
       <textarea
+        ref={textRef}
         className="rv-textarea"
         placeholder="코멘트를 입력하세요… (⌘/Ctrl+Enter 등록)"
         value={text}
-        autoFocus
         onInput={(e: Event) =>
           setText((e.currentTarget as HTMLTextAreaElement).value)
         }
-        onKeyDown={(e: KeyboardEvent) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            submit();
-          }
-        }}
       />
       {!isPage ? (
-        <label className="rv-shot-check">
-          <input
-            type="checkbox"
-            checked={shoot}
-            onChange={(e: Event) =>
-              setShoot((e.currentTarget as HTMLInputElement).checked)
-            }
-          />
-          📷 스크린샷 첨부
-        </label>
+        <>
+          <label className="rv-shot-check">
+            <input
+              type="checkbox"
+              checked={shoot}
+              onChange={(e: Event) =>
+                setShoot((e.currentTarget as HTMLInputElement).checked)
+              }
+            />
+            📷 스크린샷 첨부
+          </label>
+          {needsShot ? (
+            <div className="rv-shot-hint">
+              텍스트가 없는 요소예요 — 스크린샷을 권장합니다
+            </div>
+          ) : null}
+        </>
       ) : null}
       <div className="rv-row-end">
         <button className="rv-btn rv-btn-ghost" onClick={onCancel}>
@@ -885,6 +1041,110 @@ function ShotThumb({ id }: { id: string }) {
   return <img className="rv-shot-thumb" src={url} alt="첨부된 스크린샷" />;
 }
 
+/* ── 버전 바 (현재 선택 + 범례겸 표시 멀티선택) ── */
+interface VerProps {
+  current: string;
+  setCurrent: (v: string) => void;
+  all: string[];
+  counts: Map<string, number>;
+  visible: Set<string>;
+  toggle: (v: string) => void;
+  showAll: () => void;
+  showOnlyCurrent: () => void;
+  colorFor: (v: string) => string;
+  known: string[];
+}
+
+function VersionBar({ ver }: { ver: VerProps }) {
+  const [open, setOpen] = useState(false); // 가시성 목록만 접힘 — 스위치/생성은 항상 보임
+  const shown = ver.all.filter((v) => ver.visible.has(v)).length;
+
+  return (
+    <div className={`rv-verbar${open ? " rv-open" : ""}`}>
+      {/* ZONE 1 — 항상 보임: 스위치(select) + 생성(버튼) + 표시 토글 */}
+      <div className="rv-ver-bar1">
+        <span
+          className="rv-ver-swatch"
+          style={{ ["--rv-c" as any]: ver.colorFor(ver.current) }}
+        />
+        {/* 현재 작성 버전 스위치 — 버전 단위(vN), 날짜 입력 없음 */}
+        <select
+          className="rv-ver-select"
+          value={ver.current}
+          aria-label="현재 작성 버전"
+          onChange={(e: Event) =>
+            ver.setCurrent((e.currentTarget as HTMLSelectElement).value)
+          }
+        >
+          {ver.all.map((v) => (
+            <option key={v} value={v}>{`■ ${v}`}</option>
+          ))}
+        </select>
+        {/* 새 버전 생성 — 버튼으로 자동 증가(v0→v1→v2…), 텍스트 입력 없음 */}
+        <button
+          className="rv-btn rv-btn-ghost rv-ver-newbtn"
+          title="다음 버전을 만들고 현재로 전환"
+          onClick={() => ver.setCurrent(store.nextVersion(ver.all))}
+        >
+          + 새 버전
+        </button>
+        {/* 표시(가시성) 목록 펼치기/접기 — 이것만 접힘 */}
+        <button
+          className="rv-ver-vistog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          표시 <b>{shown}</b>/{ver.all.length}{" "}
+          <span className="rv-ver-caret">▾</span>
+        </button>
+      </div>
+
+      {/* ZONE 2 — 접이식: 표시할 버전 멀티선택(여러 버전 동시 보기) */}
+      {open ? (
+        <div className="rv-ver-body">
+          <div className="rv-ver-toolbar">
+            <span className="rv-ver-hint">표시할 버전</span>
+            <button className="rv-ver-mini" onClick={ver.showAll}>
+              전체
+            </button>
+            <button className="rv-ver-mini" onClick={ver.showOnlyCurrent}>
+              현재만
+            </button>
+          </div>
+          <div className="rv-verlist">
+            {ver.all.map((v) => {
+              const on = ver.visible.has(v);
+              return (
+                <label
+                  key={v}
+                  className={`rv-ver-row${on ? "" : " rv-ver-off"}`}
+                  title={v}
+                >
+                  <input
+                    type="checkbox"
+                    className="rv-ver-cb"
+                    checked={on}
+                    onChange={() => ver.toggle(v)}
+                  />
+                  <span
+                    className="rv-ver-swatch"
+                    style={{ ["--rv-c" as any]: ver.colorFor(v) }}
+                  />
+                  <span className="rv-ver-name">{v}</span>
+                  <span className="rv-ver-count">{ver.counts.get(v) ?? 0}</span>
+                  {v === ver.current ? (
+                    <span className="rv-ver-now">현재</span>
+                  ) : null}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ── 패널 ─────────────────────────────────────── */
 function Panel({
   comments,
@@ -900,6 +1160,8 @@ function Panel({
   onDownloadMd,
   onExportFiles,
   onClearAll,
+  pendingShots,
+  ver,
   onClose,
   onHide,
 }: {
@@ -916,20 +1178,28 @@ function Panel({
   onDownloadMd: () => void;
   onExportFiles: () => void;
   onClearAll: () => void;
+  pendingShots: number;
+  ver: VerProps;
   onClose: () => void;
   onHide: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name);
 
-  // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다
-  const filtered = hideResolved
-    ? allComments.filter((c) => !c.resolved)
-    : allComments;
+  // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다(해결됨 + 버전 가시성 필터).
+  const filtered = allComments.filter(
+    (c) => (!hideResolved || !c.resolved) && ver.visible.has(store.verOf(c)),
+  );
   const totalForExport = hideResolved
     ? allComments.filter((c) => !c.resolved).length
     : allComments.length;
   const shotCount = filtered.filter((c) => c.shot).length;
+  const exportHint =
+    pendingShots > 0
+      ? `스크린샷 ${pendingShots}장 처리 중`
+      : shotCount > 0
+        ? `이미지 ${shotCount}장 포함`
+        : `${totalForExport}개${hideResolved ? " · 미해결만" : ""}`;
 
   return (
     <div className="rv-card rv-panel">
@@ -941,6 +1211,8 @@ function Panel({
       </div>
 
       <div className="rv-panel-sub">전체 서비스 리뷰 · {allComments.length}개</div>
+
+      <VersionBar ver={ver} />
 
       <div className="rv-panel-toolbar">
         <label className="rv-check">
@@ -973,7 +1245,10 @@ function Panel({
                 className={`rv-item${c.resolved ? " rv-resolved" : ""}`}
                 onClick={() => onGoTo(c)}
               >
-                <span className="rv-item-num">
+                <span
+                  className="rv-item-num"
+                  style={{ ["--rv-c" as any]: ver.colorFor(store.verOf(c)) }}
+                >
                   {c.pagePath === currentPath ? comments.indexOf(c) + 1 : "•"}
                 </span>
                 <span style={{ minWidth: "0", flex: "1", display: "block" }}>
@@ -1000,22 +1275,22 @@ function Panel({
             📋 MD 복사
           </button>
           <button className="rv-btn rv-btn-ghost" onClick={onDownloadMd}>
-            ⬇ MD
+            ⬇ 다운로드
           </button>
-          <span className="rv-export-hint">
-            {totalForExport}개{hideResolved ? " · 미해결만" : ""}
-          </span>
+          <span className="rv-export-hint">{exportHint}</span>
         </div>
-        {shotCount > 0 ? (
+        {shotCount > 0 || pendingShots > 0 ? (
           <div className="rv-export-row" style={{ marginTop: "6px" }}>
             <button
               className="rv-btn rv-btn-ghost"
               style={{ flex: "1" }}
               onClick={onExportFiles}
             >
-              🖼 스크린샷 포함 내보내기
+              🗂 폴더로 저장
             </button>
-            <span className="rv-export-hint">이미지 {shotCount}장</span>
+            <span className="rv-export-hint">
+              {pendingShots > 0 ? "처리 완료 후 저장" : `이미지 ${shotCount}장`}
+            </span>
           </div>
         ) : null}
       </div>

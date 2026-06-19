@@ -150,7 +150,7 @@ ok(
   "MD 딥링크 라인",
 );
 ok(mdAll.includes(`스크린샷: ![#`) && mdAll.includes(`images/${c1.id}.png`), "MD 스크린샷 상대경로 참조");
-ok(mdAll.includes("으로 위치를 중복 표기합니다"), "MD 상단 해석 가이드");
+ok(mdAll.includes("우선순위 순으로"), "MD 상단 해석 가이드(우선순위)");
 
 const mdOpen = buildMarkdown("데모 사이트", store.listAll(), { status: "open" });
 ok(!mdOpen.includes("[x]"), "open 필터: 해결됨 제외");
@@ -190,10 +190,136 @@ ok(!inj.includes("[y](z)"), "MD 인젝션: a11y name 링크 비활성화");
 ok(inj.includes("섹션: a\\]b\\!"), "MD 인젝션: heading 이스케이프");
 ok(!inj.includes("a(b)?r=(1)") && inj.includes("a%28b%29"), "MD 인젝션: 딥링크 URL 괄호 인코딩");
 
+// v0.4.3 — 소스 포인터 / 뷰포트 / unique 힌트 / needsShot 라인 + 우선순위 순서
+const md043 = buildMarkdown(
+  "x",
+  [
+    {
+      id: "s1",
+      pagePath: "/studio",
+      pageUrl: "http://x/studio",
+      anchor: {
+        type: "pin",
+        selector: "button:nth-of-type(2)",
+        xPercent: 0,
+        yPercent: 0,
+        source: { component: "QueueItem", file: "src/queue-item.tsx", line: 31 },
+        quote: { exact: "샤워기를 들고 찍은 ugc 이미지", unique: true },
+        a11y: { role: "button", name: "큐 항목" },
+        vw: 1440,
+        vh: 900,
+      },
+      body: "큐 카드 크게",
+      authorName: "테스터",
+      shot: null,
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-18T00:00:00Z",
+      updatedAt: "2026-06-18T00:00:00Z",
+    },
+    {
+      id: "s2",
+      pagePath: "/studio",
+      pageUrl: "http://x/studio",
+      anchor: {
+        type: "pin",
+        selector: "div:nth-of-type(3)",
+        xPercent: 0,
+        yPercent: 0,
+        quote: { exact: "검색", unique: false },
+        vw: 390,
+        vh: 844,
+        needsShot: true,
+      },
+      body: "미리보기 너무 넓어",
+      authorName: "테스터",
+      shot: null,
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-18T00:01:00Z",
+      updatedAt: "2026-06-18T00:01:00Z",
+    },
+  ],
+  { status: "all", generatedAt: gen },
+);
+ok(md043.includes("소스: `QueueItem` · src/queue-item.tsx:31"), "MD 소스 포인터(컴포넌트·file:line)");
+ok(md043.includes('인용: "샤워기를 들고 찍은 ugc 이미지" · grep 1줄 기대'), "MD unique=true grep 힌트");
+ok(md043.includes('인용: "검색" · 중복 — 맥락/셀렉터 확인'), "MD unique=false 중복 힌트");
+ok(md043.includes("뷰포트: 1440×900"), "MD 뷰포트 폭×높이(데스크톱)");
+ok(md043.includes("뷰포트: 390×844"), "MD 뷰포트(모바일)");
+ok(md043.includes("⚠ 빈 요소 — 스크린샷 권장"), "MD needsShot 라인");
+ok(
+  md043.indexOf("소스: `QueueItem`") < md043.indexOf('인용: "샤워기'),
+  "MD 우선순위: 소스가 인용보다 먼저",
+);
+ok(
+  md043.indexOf('인용: "샤워기') < md043.indexOf("위치: `/studio`"),
+  "MD 우선순위: 인용이 셀렉터보다 먼저",
+);
+
 store.remove(c3.id);
 ok(store.listAll().length === 2, "remove 동작");
 store.clear();
 ok(store.listAll().length === 0, "clear 동작");
+
+// ── 버전 관리 ─────────────────────────────────────────────────
+// clear()가 버전 키도 리셋했는지(확장된 clear)
+ok(store.getVersion() === "v0", "clear 후 현재 버전 = v0(SEED)");
+ok(store.readVisibleRaw() === null, "clear 후 가시성 = 전체 센티넬(null)");
+ok(store.getKnownVersions().length === 0, "clear 후 레지스트리 비어있음");
+
+// create()가 현재 버전을 스탬프
+const vc1 = store.create({ pagePath: "/v", pageUrl: "http://x/v", body: "b", authorName: "t", anchor: { type: "page" } });
+ok(vc1.version === "v0", "create: 현재 버전(v0) 스탬프");
+
+// 버전 bump → 새 코멘트 반영 + 레지스트리 등록
+store.setVersion("0.0.1");
+ok(store.getVersion() === "0.0.1", "setVersion 반영");
+const vc2 = store.create({ pagePath: "/v", pageUrl: "http://x/v", body: "b2", authorName: "t", anchor: { type: "page" } });
+ok(vc2.version === "0.0.1", "create: bump된 버전 스탬프");
+ok(store.getKnownVersions().includes("0.0.1"), "레지스트리에 새 버전 등록");
+
+// 가시성 persist + 센티넬 복원
+store.setVisibleVersions(["0.0.1"]);
+ok(JSON.stringify(store.readVisibleRaw()) === JSON.stringify(["0.0.1"]), "가시성 persist");
+store.clearVisible();
+ok(store.readVisibleRaw() === null, "clearVisible → 전체 센티넬 복원");
+
+// nextVersion — 버튼 생성용 vN 자동 증가(레거시 라벨 무시)
+ok(store.nextVersion([]) === "v1", "nextVersion([]) = v1");
+ok(store.nextVersion(["v0"]) === "v1", "nextVersion([v0]) = v1(SEED 다음)");
+ok(store.nextVersion(["v0", "v3", "draft"]) === "v4", "nextVersion: 최대 vN+1");
+ok(store.nextVersion(["0.0.1", "release"]) === "v1", "nextVersion: 레거시 라벨 무시 → v1");
+
+// 색 안정성 — 현재 버전 bump해도 다른 버전 색 불변(적대적 검증이 잡은 회귀)
+store.clear();
+store.setVersion("v0");
+store.setVersion("v1");
+store.setVersion("v2"); // 레지스트리 [v0,v1,v2], current=v2
+const v1ColorBefore = store.colorFor("v1", "v2");
+ok(store.colorFor("v2", "v2") === "#6366f1", "현재 버전 = 시그니처 인디고");
+ok(v1ColorBefore !== "#6366f1" && v1ColorBefore.charAt(0) === "#", "비현재 버전 = 팔레트 색");
+ok(store.colorFor("v1", "v0") === v1ColorBefore, "색 안정성: 현재 bump해도 v1 색 불변");
+ok(store.colorFor("v0", "v0") === "#6366f1", "bump 후 새 현재(v0)=인디고");
+
+// 마이그레이션 — 버전 없는 코멘트 → v0, 멱등
+store.clear();
+globalThis.localStorage.setItem("rv:comments", JSON.stringify([
+  { id: "legacy1", pagePath: "/p", pageUrl: "http://x/p", anchor: { type: "page" }, body: "옛 코멘트", authorName: "t", resolved: false, resolvedAt: null, createdAt: "2026-06-17T00:00:00Z", updatedAt: "2026-06-17T00:00:00Z" },
+]));
+store.migrate();
+ok(store.listAll()[0].version === "v0", "마이그레이션: 버전없음 → v0");
+ok(globalThis.localStorage.getItem("rv:schema") === "1", "마이그레이션: 스키마 가드 기록");
+const afterMigrate = JSON.stringify(store.listAll());
+store.migrate(); // 멱등 — 가드 때문에 재스탬프 없음
+ok(JSON.stringify(store.listAll()) === afterMigrate, "마이그레이션 멱등(재호출 무변)");
+
+// MD 버전 줄(P1) + 인젝션 이스케이프
+const mdVer = buildMarkdown("x", [
+  { id: "mv", pagePath: "/p", pageUrl: "http://x/p", anchor: { type: "pin", selector: "#z", xPercent: 0, yPercent: 0 }, body: "본문", authorName: "t", version: "1.0](http://evil)", resolved: false, resolvedAt: null, createdAt: "2026-06-17T00:00:00Z", updatedAt: "2026-06-17T00:00:00Z" },
+], { status: "all", generatedAt: gen });
+ok(mdVer.includes("- 버전: `1.0\\]\\(http://evil\\)`"), "MD 버전 줄 + 인젝션 이스케이프");
+store.clear();
 
 console.log(`\n=== selftest: ${pass} passed, ${fail} failed ===`);
 if (fail === 0) {

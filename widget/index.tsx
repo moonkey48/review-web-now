@@ -2,6 +2,7 @@ import { render } from "preact";
 import { App } from "./app";
 import { HOST_ID } from "./anchor";
 import { parseReviewInvite } from "./reviewGate";
+import { migrate } from "./store";
 
 // ───────────────────────────────────────────────────────────
 // Reviewer 위젯 부트스트랩 (로컬 전용 · 백엔드 없음)
@@ -64,6 +65,7 @@ function installHistoryHook() {
 
 function mount(locked: boolean, initialName: string) {
   installHistoryHook();
+  migrate(); // 버전 없는 기존 코멘트를 "v0"로 일회성 스탬프(멱등·loadAll은 순수 읽기 유지)
 
   const host = document.createElement("div");
   host.id = HOST_ID;
