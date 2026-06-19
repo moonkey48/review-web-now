@@ -1,6 +1,6 @@
 {
   "name": "reviewer",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "로컬 전용 북마클릿 리뷰 위젯 — 코멘트를 localStorage에 저장하고 Markdown으로 내보낸다",
   "packageManager": "pnpm@11.0.9",
