@@ -17,6 +17,12 @@ export interface AppProps {
 }
 
 const SITE_TITLE = document.title || location.host;
+type ExportMethod = "copy" | "zip" | "folder" | "json";
+
+interface ExportRunOptions {
+  includeResolved: boolean;
+  allowMarkdown: boolean;
+}
 
 function timeLabel(iso: string): string {
   const d = new Date(iso);
@@ -79,8 +85,8 @@ function isEditableFocused(): boolean {
   );
 }
 
-function downloadText(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+function downloadFile(filename: string, text: string, type: string) {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -89,6 +95,41 @@ function downloadText(filename: string, text: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadText(filename: string, text: string) {
+  downloadFile(filename, text, "text/markdown;charset=utf-8");
+}
+
+function downloadJson(filename: string, value: unknown) {
+  downloadFile(
+    filename,
+    JSON.stringify(value, null, 2),
+    "application/json;charset=utf-8",
+  );
+}
+
+function jsonPayload(comments: RvComment[], includeResolved: boolean) {
+  return {
+    schema: 1,
+    exportedAt: new Date().toISOString(),
+    source: "reviewer",
+    includeResolved,
+    note: "Screenshot image blobs are not included in JSON exports.",
+    comments: comments.map((c) => ({ ...c, shot: null })),
+  };
+}
+
+function commentsFromJsonPayload(payload: unknown): unknown[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { comments?: unknown }).comments)
+  ) {
+    return (payload as { comments: unknown[] }).comments;
+  }
+  return null;
 }
 
 export function App({ onHide, initialName }: AppProps) {
@@ -493,10 +534,24 @@ export function App({ onHide, initialName }: AppProps) {
   // 통합 내보내기 — 모달이 고른 리뷰 부분집합을 method별로 내보낸다.
   const runExport = useCallback(
     async (
-      method: "copy" | "zip" | "folder",
+      method: ExportMethod,
       selected: RvComment[],
-      includeResolved: boolean,
+      options: ExportRunOptions,
     ): Promise<"ok" | "cancel" | "fail"> => {
+      const { includeResolved, allowMarkdown } = options;
+      if (method === "json") {
+        try {
+          downloadJson(
+            `review-data-${fileStamp()}.json`,
+            jsonPayload(selected, includeResolved),
+          );
+          showToast(`JSON 다운로드를 시작했어요 · ${selected.length}개`);
+          return "ok";
+        } catch {
+          showToast("JSON 내보내기 실패");
+          return "fail";
+        }
+      }
       await waitForCaptures();
       const status: "all" | "open" = includeResolved ? "all" : "open";
       const shots = await getShots(
@@ -506,7 +561,10 @@ export function App({ onHide, initialName }: AppProps) {
       const commentsForMd = selected.map((c) =>
         c.shot && !shots.has(c.shot.id) ? { ...c, shot: null } : c,
       );
-      const md = buildMarkdown(SITE_TITLE, commentsForMd, { status });
+      const md = buildMarkdown(SITE_TITLE, commentsForMd, {
+        status,
+        escapeUserText: !allowMarkdown,
+      });
       try {
         if (method === "copy") {
           const ok = await copyText(md);
@@ -542,6 +600,32 @@ export function App({ onHide, initialName }: AppProps) {
       }
     },
     [waitForCaptures, showToast],
+  );
+
+  const importJson = useCallback(
+    async (file: File) => {
+      try {
+        const payload = JSON.parse(await file.text()) as unknown;
+        const incoming = commentsFromJsonPayload(payload);
+        if (!incoming) {
+          showToast("JSON 형식이 맞지 않습니다");
+          return;
+        }
+        const result = store.importMany(incoming);
+        if (!result) {
+          setStoreBroken(!store.commentsReadable());
+          showToast("JSON 가져오기 실패 — 저장 공간/데이터 상태를 확인하세요");
+          return;
+        }
+        setCurVerState(store.getVersion());
+        setVisRaw(store.readVisibleRaw());
+        bumpData();
+        showToast(`JSON 가져오기 완료 · 추가 ${result.added}개 · 건너뜀 ${result.skipped}개`);
+      } catch {
+        showToast("JSON 파일을 읽지 못했습니다");
+      }
+    },
+    [bumpData, showToast],
   );
 
   const clearAll = () => {
@@ -693,6 +777,7 @@ export function App({ onHide, initialName }: AppProps) {
             setPanelOpen(false);
             setExportOpen(true);
           }}
+          onImportJson={importJson}
           onClearAll={clearAll}
           pendingShots={pendingShots}
           ver={{
@@ -1251,9 +1336,9 @@ function ExportModal({
   initialVisible: Set<string>;
   initialIncludeResolved: boolean;
   onRun: (
-    method: "copy" | "zip" | "folder",
+    method: ExportMethod,
     selected: RvComment[],
-    includeResolved: boolean,
+    options: ExportRunOptions,
   ) => Promise<"ok" | "cancel" | "fail">;
   onClose: () => void;
 }) {
@@ -1271,7 +1356,8 @@ function ExportModal({
     () => new Set(versions.filter((v) => initialVisible.has(v.version)).map((v) => v.version)),
   );
   const [includeResolved, setIncludeResolved] = useState(initialIncludeResolved);
-  const [method, setMethod] = useState<"copy" | "zip" | "folder">("copy");
+  const [allowMarkdown, setAllowMarkdown] = useState(true);
+  const [method, setMethod] = useState<ExportMethod>("copy");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<"" | "ok" | "fail">("");
 
@@ -1285,6 +1371,7 @@ function ExportModal({
   );
   const shotCount = selected.filter((c) => c.shot).length;
   const warn = method === "copy" && shotCount > 0;
+  const jsonWarn = method === "json" && shotCount > 0;
 
   const toggleVer = (v: string) =>
     setChecked((prev) => {
@@ -1297,7 +1384,7 @@ function ExportModal({
     if (!selected.length || busy) return;
     setBusy(true);
     setResult("");
-    const r = await onRun(method, selected, includeResolved);
+    const r = await onRun(method, selected, { includeResolved, allowMarkdown });
     setBusy(false);
     if (r === "ok") {
       setResult("ok");
@@ -1312,6 +1399,7 @@ function ExportModal({
     ["copy", "📋", "MD 복사"],
     ["zip", "⬇", "ZIP 다운로드"],
     ["folder", "🗂", "폴더 저장"],
+    ["json", "{}", "JSON"],
   ] as const;
   const goLabel = busy
     ? "처리 중…"
@@ -1319,7 +1407,12 @@ function ExportModal({
       ? "완료 ✓"
       : result === "fail"
         ? "실패 — 다시"
-        : { copy: "MD 복사", zip: "ZIP 다운로드", folder: "폴더에 저장" }[method];
+        : {
+            copy: "MD 복사",
+            zip: "ZIP 다운로드",
+            folder: "폴더에 저장",
+            json: "JSON 다운로드",
+          }[method];
 
   return (
     <div className="rv-modal-backdrop">
@@ -1393,6 +1486,18 @@ function ExportModal({
               />
               해결됨 제외
             </label>
+            {method !== "json" ? (
+              <label className="rv-check" style={{ marginTop: "8px", marginLeft: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={allowMarkdown}
+                  onChange={(e: Event) =>
+                    setAllowMarkdown((e.currentTarget as HTMLInputElement).checked)
+                  }
+                />
+                본문 Markdown 허용
+              </label>
+            ) : null}
           </div>
 
           {/* 스크린샷 경고 (MD 복사 + 샷 있을 때만) */}
@@ -1410,6 +1515,22 @@ function ExportModal({
                   ZIP으로 받기
                 </button>
                 를 권장해요.
+              </span>
+            </div>
+          ) : null}
+          {jsonWarn ? (
+            <div className="rv-ex-warn">
+              <span aria-hidden="true">⚠</span>
+              <span>
+                JSON에는 스크린샷 이미지 파일이 포함되지 않습니다. 이미지까지 보관하려면{" "}
+                <button
+                  type="button"
+                  className="rv-ex-warn-fix"
+                  onClick={() => setMethod("zip")}
+                >
+                  ZIP으로 받기
+                </button>
+                를 사용하세요.
               </span>
             </div>
           ) : null}
@@ -1475,6 +1596,7 @@ function Panel({
   onPageComment,
   onGoTo,
   onOpenExport,
+  onImportJson,
   onClearAll,
   pendingShots,
   ver,
@@ -1491,6 +1613,7 @@ function Panel({
   onPageComment: () => void;
   onGoTo: (c: RvComment) => void;
   onOpenExport: () => void;
+  onImportJson: (file: File) => void;
   onClearAll: () => void;
   pendingShots: number;
   ver: VerProps;
@@ -1499,6 +1622,7 @@ function Panel({
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name);
+  const importRef = useRef<HTMLInputElement>(null);
 
   // 전체 서비스 기준 — 모든 페이지의 코멘트를 한 목록으로 본다(해결됨 + 버전 가시성 필터).
   const filtered = allComments.filter(
@@ -1593,6 +1717,23 @@ function Panel({
             📤 내보내기
           </button>
           <span className="rv-export-hint">{exportHint}</span>
+        </div>
+        <div className="rv-import-row">
+          <input
+            ref={importRef}
+            className="rv-file-input"
+            type="file"
+            accept="application/json,.json"
+            onChange={(e: Event) => {
+              const input = e.currentTarget as HTMLInputElement;
+              const file = input.files?.[0];
+              input.value = "";
+              if (file) onImportJson(file);
+            }}
+          />
+          <button className="rv-foot-link" onClick={() => importRef.current?.click()}>
+            JSON 가져오기
+          </button>
         </div>
       </div>
 

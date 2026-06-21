@@ -60,6 +60,7 @@ function anchorLabel(anchor: Anchor | null): string {
 export interface MarkdownOptions {
   status: "all" | "open";
   generatedAt?: Date;
+  escapeUserText?: boolean;
 }
 
 // 페이지(경로)별 섹션 → 문서 전체 연속 번호 → [x]/[ ] 체크박스 → 메타(작성자·일시·위치)
@@ -100,7 +101,9 @@ export function buildMarkdown(
     lines.push(`## ${page} (${items.length}개)`);
     for (const c of items) {
       seq += 1;
-      const body = c.body.split(/\r?\n/);
+      const body = c.body.split(/\r?\n/).map((line) =>
+        opts.escapeUserText ? escMd(line) : line,
+      );
       lines.push("");
       // 제목 없이 본문을 체크박스 항목으로 바로 싣는다 (첫 줄 → 나머지 줄은 들여쓰기)
       lines.push(`${seq}. [${c.resolved ? "x" : " "}] ${body[0] ?? ""}`);
@@ -152,7 +155,8 @@ export function buildMarkdown(
         lines.push(`   - 스크린샷: ![#${seq}](images/${c.shot.id}.png)`);
       }
       if (c.version) lines.push(`   - 버전: \`${escMd(c.version)}\``);
-      lines.push(`   - ${c.authorName} · ${shortStamp(c.createdAt)}`);
+      const author = opts.escapeUserText ? escMd(c.authorName) : c.authorName;
+      lines.push(`   - ${author} · ${shortStamp(c.createdAt)}`);
     }
   }
   lines.push("");

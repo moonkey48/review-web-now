@@ -211,6 +211,41 @@ function byCreated(a: RvComment, b: RvComment): number {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function importedComment(v: unknown): RvComment | null {
+  if (!isRecord(v)) return null;
+  if (
+    typeof v.id !== "string" ||
+    typeof v.pagePath !== "string" ||
+    typeof v.pageUrl !== "string" ||
+    typeof v.body !== "string" ||
+    typeof v.authorName !== "string" ||
+    typeof v.createdAt !== "string" ||
+    typeof v.updatedAt !== "string" ||
+    typeof v.resolved !== "boolean"
+  ) {
+    return null;
+  }
+  const anchor = isRecord(v.anchor) || v.anchor === null ? (v.anchor as Anchor | null) : null;
+  return {
+    id: v.id,
+    pagePath: v.pagePath,
+    pageUrl: v.pageUrl,
+    anchor,
+    body: v.body,
+    authorName: v.authorName,
+    shot: null, // JSON import에는 IndexedDB blob이 없으므로 깨진 이미지 참조를 만들지 않는다.
+    version: typeof v.version === "string" ? v.version : undefined,
+    resolved: v.resolved,
+    resolvedAt: typeof v.resolvedAt === "string" ? v.resolvedAt : null,
+    createdAt: v.createdAt,
+    updatedAt: v.updatedAt,
+  };
+}
+
 export function list(path: string, legacyPath?: string): RvComment[] {
   return loadAll()
     .filter((c) => c.pagePath === path || (!!legacyPath && c.pagePath === legacyPath))
@@ -219,6 +254,39 @@ export function list(path: string, legacyPath?: string): RvComment[] {
 
 export function listAll(): RvComment[] {
   return loadAll().sort(byCreated);
+}
+
+export function importMany(input: unknown[]): { added: number; skipped: number } | null {
+  const all = loadForWrite();
+  if (!all) return null;
+  const seen = new Set(all.map((c) => c.id));
+  const next = [...all];
+  const importedVersions = new Set<string>();
+  let added = 0;
+  let skipped = 0;
+  for (const item of input) {
+    const c = importedComment(item);
+    if (!c || seen.has(c.id)) {
+      skipped += 1;
+      continue;
+    }
+    seen.add(c.id);
+    next.push(c);
+    importedVersions.add(verOf(c));
+    added += 1;
+  }
+  if (!persist(next)) return null;
+  for (const v of importedVersions) register(v);
+  const visRaw = readRaw(KEY_VISIBLE);
+  if (visRaw !== null && importedVersions.size) {
+    const vis = readStrArr(KEY_VISIBLE);
+    const merged = [...vis];
+    for (const v of importedVersions) {
+      if (!merged.includes(v)) merged.push(v);
+    }
+    if (merged.length !== vis.length) writeRaw(KEY_VISIBLE, JSON.stringify(merged));
+  }
+  return { added, skipped };
 }
 
 export function create(input: {

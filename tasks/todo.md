@@ -562,3 +562,49 @@
 - 확장성 개선 후보: 코멘트 공유는 여전히 MD 수동 병합이다. 로컬 전용 원칙을 유지하더라도 JSON export/import + merge/dedupe를 추가하면 여러 리뷰어의 결과를 합치기 쉬워진다.
 - 확장성 개선 후보: 코멘트 메타는 localStorage 전체 배열을 매번 파싱/저장한다. 수백~수천 건 이상을 목표로 하면 IndexedDB 메타 저장소 또는 메모리 캐시+증분 저장 구조가 필요하다.
 - 호환성 개선 후보: 스크린샷은 `html2canvas` CDN 지연 로드가 기본이다. CSP/offline 환경에서는 같은 origin helper 파일 산출물 또는 설치 스니펫의 `__RV_H2C_URL__` 예시를 더 명확히 제공하는 편이 낫다.
+
+## 23. 남은 개선점 구현
+
+목표: 22번 리서치의 남은 개선 후보 중 영향 대비 효과가 큰 항목을 구현한다.
+
+### 계획
+- [x] 릴리스/SRI 불일치를 감지하는 `release:check` 스크립트를 추가한다.
+- [x] 브라우저 자동 검증 실행 경로를 명시하고 실패 로그를 더 잘 보여준다.
+- [x] Markdown 내보내기에 리뷰어 본문/작성자 안전 이스케이프 옵션을 추가한다.
+- [x] JSON 다운로드/가져오기와 id 기준 merge/dedupe를 추가한다.
+- [x] CSP/offline 환경의 `html2canvas` 자가호스트 안내를 보강한다.
+- [x] typecheck/selftest/browser-harness/build/release-check로 검증하고 결과를 문서화한다.
+
+### 리뷰
+- `package.json`에 `test:browser:run`, `release:check`를 추가했다. `release-check`는 `dist/widget.js` SRI를 계산해 `scripts/build-widget.mjs`, README, 설치 페이지 템플릿의 CDN/SRI와 비교한다.
+- 브라우저 자동 실행 실패 시 file URL, `CHROME_BIN`, 종료 status(signal/code), Chrome stderr 로그 경로를 바로 출력하도록 했다.
+- 내보내기 모달에 JSON 다운로드와 `본문 Markdown 허용` 옵션을 추가했다. 체크 해제 시 리뷰어 본문/작성자명까지 Markdown 메타문자를 escape한다.
+- 패널에 JSON 가져오기를 추가했다. import는 id 기준으로 새 코멘트만 병합하고, 중복 id는 덮어쓰지 않으며, JSON에 없는 screenshot blob 때문에 깨진 이미지 참조가 생기지 않도록 `shot` 메타를 제거한다. 새 버전은 명시적 표시 필터에도 자동 추가한다.
+- README, 설치 페이지, Claude 설치 스킬에 JSON 병합 흐름과 `window.__RV_H2C_URL__` 자가호스트/CSP 안내를 추가했다.
+- 검증:
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 92 passed / 0 failed
+  - `pnpm test:browser` 통과: anchor/widget file 하니스 생성
+  - `pnpm build` 통과: widget.js 89.3KB, loader bookmarklet 0.5KB, inline 131.0KB(Safari 주의)
+  - `pnpm release:check` 실행 완료. 현재 브랜치의 새 dist SRI(`sha384-jy9X04MR8xtRMZHvsXpPxodwTLDnr6cN79voitD7Ig1Z06N+aovsIKuywetHmUrk`)가 배포 문서의 `@v1.0.1` SRI와 달라 mismatch를 보고한다. 아직 새 버전 태그가 아니므로 README/CDN SRI는 갱신하지 않았다.
+  - `pnpm test:browser:run`은 로컬 Chrome headless가 `SIGABRT`로 종료되어 실패했다. 보강된 로그는 `status=signal=SIGABRT`, `CHROME_BIN`, 로그 파일 경로, `(no Chrome stderr output)`을 표시한다.
+
+## 24. v1.0.2 버전업/커밋/푸시
+
+목표: 남은 개선점 구현분을 `v1.0.2`로 버전업하고, release metadata와 산출물을 맞춘 뒤 원격에 반영한다.
+
+### 계획
+- [x] `package.json` 버전을 `1.0.2`로 올린다.
+- [x] README, 설치 페이지 템플릿, 북마클릿 로더 CDN URL/SRI를 `@v1.0.2`로 갱신한다.
+- [x] `pnpm build`로 `dist/`와 설치 스킬 위젯을 재생성한다.
+- [x] typecheck/selftest/browser-harness/release strict check를 실행한다.
+- [x] 커밋, 브랜치 push, `v1.0.2` 태그 push를 완료한다.
+
+### 리뷰
+- `v1.0.2` SRI: `sha384-jy9X04MR8xtRMZHvsXpPxodwTLDnr6cN79voitD7Ig1Z06N+aovsIKuywetHmUrk`
+- 검증:
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 92 passed / 0 failed
+  - `pnpm test:browser` 통과: anchor/widget file 하니스 생성
+  - `pnpm build` 통과: widget.js 89.3KB, loader bookmarklet 0.5KB, inline 131.0KB(Safari 주의)
+  - `node scripts/release-check.mjs --strict` 통과

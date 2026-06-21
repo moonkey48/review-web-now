@@ -34,9 +34,9 @@ description: 현재 웹 프로젝트에 Reviewer 리뷰 위젯을 설치한다 (
 ## 사용 안내 (요약에 함께 전달)
 
 - 코멘트는 그 사이트 origin의 `localStorage`에만 저장된다(서버 전송 0). 비우려면 위젯 패널의 **전체 삭제**.
-- 팀원끼리 코멘트는 **공유되지 않는다** — 각자 위젯에서 `📋 MD 복사` / `⬇ 다운로드`로 내보내 취합한다.
+- 팀원끼리 코멘트는 **공유되지 않는다** — 전달은 `📋 MD 복사` / `⬇ ZIP 다운로드`, 병합은 `JSON 다운로드` / `JSON 가져오기`로 취합한다. JSON은 screenshot blob을 포함하지 않으므로 이미지는 ZIP/폴더 저장으로 보관한다.
 - 리뷰는 **모두 같은 URL/도메인**에서 (저장소가 origin별로 분리됨).
-- CSP가 엄격하면 `script-src 'self'`가 허용돼야 한다(방법 A는 보통 self이므로 문제없음).
+- CSP가 엄격하면 설치 방식에 맞춰 `script-src`를 허용해야 한다. 이 스킬처럼 `/widget.js`를 같은 origin에 두면 `script-src 'self'`가 필요하고, 스크린샷용 `html2canvas`도 사내망/offline에서는 같은 origin에 둔 뒤 위젯보다 앞에서 `window.__RV_H2C_URL__="/vendor/html2canvas.min.js"`를 지정한다.
 
 ## 주의
 - 이 스킬은 **새 파일 추가 + 한 줄 삽입**만 한다. 다른 코드를 수정하지 말 것.

@@ -327,6 +327,8 @@ input, textarea { font: inherit; color: inherit; }
 .rv-export { padding: 8px 12px; border-top: 1px solid #f1f1f4; }
 .rv-export-row { display: flex; gap: 6px; align-items: center; }
 .rv-export-hint { font-size: 11px; color: #a1a1aa; margin-left: auto; white-space: nowrap; }
+.rv-import-row { display: flex; justify-content: flex-end; margin-top: 6px; }
+.rv-file-input { display: none; }
 
 /* ── 내보내기 모달 (.rv-modal-backdrop 위) ── */
 .rv-exmodal {
@@ -340,9 +342,9 @@ input, textarea { font: inherit; color: inherit; }
 .rv-ex-label { font-size: 11px; font-weight: 700; color: #71717a; margin-bottom: 6px; }
 .rv-ex-scope { margin: -2px 0 7px; font-size: 10px; color: #a1a1aa; }
 /* 방식 세그먼티드 */
-.rv-ex-methods { display: flex; gap: 6px; }
+.rv-ex-methods { display: flex; flex-wrap: wrap; gap: 6px; }
 .rv-ex-method {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  flex: 1 1 92px; display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 9px 4px; border: 1px solid #e4e4e7; border-radius: 10px; background: #fafafa;
   font-size: 11px; font-weight: 600; color: #52525b;
   transition: border-color .12s ease, background .12s ease;

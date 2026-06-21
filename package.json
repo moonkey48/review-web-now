@@ -1,6 +1,6 @@
 {
   "name": "reviewer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "로컬 전용 북마클릿 리뷰 위젯 — 코멘트를 localStorage에 저장하고 Markdown으로 내보낸다",
   "packageManager": "pnpm@11.0.9",
@@ -10,7 +10,9 @@
     "dev": "node scripts/build-widget.mjs --watch",
     "typecheck": "tsc -p widget",
     "test": "node scripts/selftest.mjs",
-    "test:browser": "node scripts/browser-selftest.mjs --generate"
+    "test:browser": "node scripts/browser-selftest.mjs --generate",
+    "test:browser:run": "node scripts/browser-selftest.mjs --run",
+    "release:check": "node scripts/release-check.mjs"
   },
   "dependencies": {
     "preact": "^10.29.2"

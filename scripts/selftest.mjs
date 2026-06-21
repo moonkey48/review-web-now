@@ -205,6 +205,48 @@ ok(!inj.includes("[y](z)"), "MD 인젝션: a11y name 링크 비활성화");
 ok(inj.includes("섹션: a\\]b\\!"), "MD 인젝션: heading 이스케이프");
 ok(!inj.includes("a(b)?r=(1)") && inj.includes("a%28b%29"), "MD 인젝션: 딥링크 URL 괄호 인코딩");
 
+const userEsc = buildMarkdown(
+  "x",
+  [
+    {
+      id: "u1",
+      pagePath: "/p",
+      pageUrl: "http://x/p",
+      anchor: { type: "page" },
+      body: "링크 [click](http://evil)\n이미지 ![x](http://evil/i.png)",
+      authorName: "a]b!",
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-17T00:00:00Z",
+      updatedAt: "2026-06-17T00:00:00Z",
+    },
+  ],
+  { status: "all", generatedAt: gen, escapeUserText: true },
+);
+ok(!userEsc.includes("[click](http://evil)"), "MD 사용자 본문 안전모드: 링크 비활성화");
+ok(userEsc.includes("\\[click\\]\\(http://evil\\)"), "MD 사용자 본문 안전모드: 본문 이스케이프");
+ok(userEsc.includes("a\\]b\\! ·"), "MD 사용자 본문 안전모드: 작성자 이스케이프");
+
+const userRaw = buildMarkdown(
+  "x",
+  [
+    {
+      id: "u2",
+      pagePath: "/p",
+      pageUrl: "http://x/p",
+      anchor: { type: "page" },
+      body: "링크 [click](http://example.com)",
+      authorName: "t",
+      resolved: false,
+      resolvedAt: null,
+      createdAt: "2026-06-17T00:00:00Z",
+      updatedAt: "2026-06-17T00:00:00Z",
+    },
+  ],
+  { status: "all", generatedAt: gen, escapeUserText: false },
+);
+ok(userRaw.includes("[click](http://example.com)"), "MD 사용자 본문 기본모드: Markdown 유지");
+
 // v0.4.3 — 소스 포인터 / 뷰포트 / unique 힌트 / needsShot 라인 + 우선순위 순서
 const md043 = buildMarkdown(
   "x",
@@ -276,6 +318,42 @@ store.remove(c3.id);
 ok(store.listAll().length === 2, "remove 동작");
 store.clear();
 ok(store.listAll().length === 0, "clear 동작");
+
+const importedBase = store.create({
+  pagePath: "/merge",
+  pageUrl: "http://x/merge",
+  body: "기존",
+  authorName: "t",
+  anchor: { type: "page" },
+});
+store.setVisibleVersions(["v0"]);
+const importResult = store.importMany([
+  { ...importedBase, body: "덮어쓰면 안 됨" },
+  {
+    id: "imported-1",
+    pagePath: "/merge",
+    pageUrl: "http://x/merge",
+    anchor: { type: "page" },
+    body: "가져온 코멘트",
+    authorName: "u",
+    shot: { id: "imported-1", w: 10, h: 20 },
+    version: "v9",
+    resolved: true,
+    resolvedAt: "2026-06-17T00:05:00Z",
+    createdAt: "2026-06-17T00:04:00Z",
+    updatedAt: "2026-06-17T00:05:00Z",
+  },
+  { id: "invalid" },
+]);
+ok(importResult?.added === 1 && importResult?.skipped === 2, "JSON importMany: 추가/중복/무효 카운트");
+ok(store.listAll().length === 2, "JSON importMany: 새 코멘트만 병합");
+ok(store.listAll().find((c) => c.id === importedBase.id).body === "기존", "JSON importMany: 중복 id는 덮어쓰지 않음");
+const imported = store.listAll().find((c) => c.id === "imported-1");
+ok(imported?.shot === null, "JSON importMany: blob 없는 screenshot 메타 제거");
+ok(imported?.version === "v9", "JSON importMany: 버전 보존");
+ok(store.getKnownVersions().includes("v9"), "JSON importMany: 새 버전 레지스트리 등록");
+ok(store.readVisibleRaw()?.includes("v9"), "JSON importMany: 새 버전을 표시 필터에 포함");
+store.clear();
 
 // 저장 실패/손상 방어 — 손상된 raw를 빈 배열로 덮어쓰지 않는다.
 globalThis.localStorage.setItem("rv:comments", "{broken");

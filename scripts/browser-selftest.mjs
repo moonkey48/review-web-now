@@ -68,8 +68,30 @@ async function dumpDom(fileUrl) {
       ...args,
     ].map(shQuote).join(" ") +
     " > " + shQuote(domOut) +
-    " 2> " + shQuote(errOut);
-  await runShell(command);
+      " 2> " + shQuote(errOut);
+  try {
+    await runShell(command);
+  } catch (e) {
+    let log = "";
+    try {
+      log = await readFile(errOut, "utf8");
+    } catch {
+      // ignore
+    }
+    const status = [
+      e && e.code != null ? `code=${e.code}` : "",
+      e && e.signal ? `signal=${e.signal}` : "",
+    ].filter(Boolean).join(" ");
+    const hint =
+      `Chrome DOM dump failed for ${fileUrl}\n` +
+      `CHROME_BIN=${chromeBin()}\n` +
+      (status ? `status=${status}\n` : "") +
+      `log=${errOut}\n` +
+      (log.trim() ? `\n${log.trim().slice(-4000)}` : "\n(no Chrome stderr output)");
+    const err = new Error(hint);
+    err.cause = e;
+    throw err;
+  }
   return readFile(domOut, "utf8");
 }
 
