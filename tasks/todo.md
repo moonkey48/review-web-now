@@ -540,3 +540,25 @@
 - 손상 데이터 복구: `store.rawComments()`를 추가하고, `rv:comments`가 손상되면 복구 모달을 띄워 raw 백업 다운로드와 백업 후 초기화를 제공한다. 손상 상태에서는 기존처럼 데이터를 덮어쓰지 않는다.
 - 문서/설치 스킬: README, 설치 페이지 템플릿, Claude 설치 스킬, lessons를 "위젯 자체 비밀번호 없음 · 실제 접근 제한은 대상 앱 auth" 모델로 갱신했다.
 - 검증: `pnpm typecheck` 통과, `pnpm test` 81 passed/0 failed, `pnpm test:browser` 하니스 생성 통과(`?review=t` 초대 경로 포함), `pnpm build` 통과(widget.js 85.6KB · loader 0.5KB · inline 125.7KB). `node scripts/browser-selftest.mjs --run`은 로컬 Chrome SIGABRT로 실패했고 Chrome 로그는 비어 있었다.
+
+## 22. 커밋 후 목적/기능/개선 리서치
+
+목표: `995edc5 Remove reviewer password gate` 커밋 이후 상태에서 프로젝트 목적, 구현 기능, 남은 개선 후보를 다시 정리한다.
+
+### 계획
+- [x] 커밋 상태와 최신 변경 범위를 확인한다.
+- [x] README/package 기준으로 프로젝트 목적과 사용 흐름을 확인한다.
+- [x] 부트스트랩, 라우트 키, 저장소, 복구 UI, 캡처, 내보내기, 브라우저 하니스 구현을 재확인한다.
+- [x] 사용성·기능 안정성·확장성 관점의 다음 개선 후보를 도출한다.
+
+### 리뷰
+- 커밋: `995edc5 Remove reviewer password gate`. 현재 브랜치는 원격 대비 1커밋 ahead 상태다.
+- 목적: 대상 웹앱에 스크립트 한 줄 또는 북마클릿으로 Shadow DOM 리뷰 위젯을 띄우고, 요소/페이지 단위 코멘트를 브라우저 로컬 저장소에만 보관한 뒤 Markdown/ZIP/폴더 산출물로 전달하는 도구다.
+- 현재 구현 기능: `?review=` 초대 링크 기반 마운트(비밀번호 없음), 북마클릿 강제 마운트, SPA 내비게이션 추적, `review` 쿼리 제거 라우트 키/저장 URL, 핀/페이지 코멘트, 다층 앵커, opt-in 스크린샷, 버전 필터, cross-tab storage sync, 손상 `rv:comments` 백업/초기화 UI, Markdown/ZIP/폴더 내보내기.
+- 검증 상태: P1 구현 직후 `pnpm typecheck`, `pnpm test` 81 passed/0 failed, `pnpm test:browser` 하니스 생성, `pnpm build`가 통과했다. `--run` 브라우저 자동 실행은 로컬 Chrome SIGABRT로 실패했다.
+- 사용성 개선 후보: README/설치 스니펫은 `@v1.0.1` CDN을 가리키지만 현재 커밋은 아직 태그/릴리스가 아니다. 다음 배포 전까지는 설치 문서와 실제 CDN 코드 간 차이가 생길 수 있으므로 release automation 또는 prerelease 안내가 필요하다.
+- 기능 안정성 개선 후보: `test:browser --run`이 시스템 Chrome에 묶여 실패한다. Chrome-for-Testing 또는 Playwright를 고정해 CI에서 실제 초대 링크/핀/내보내기 흐름을 자동 검증해야 한다.
+- 기능 안정성 개선 후보: Markdown은 페이지 파생 텍스트와 버전은 escape하지만 리뷰어 본문/작성자명은 Markdown으로 그대로 출력한다. 외부 리뷰어가 섞이는 환경이면 plain-text export 옵션 또는 선택적 escape 정책이 필요하다.
+- 확장성 개선 후보: 코멘트 공유는 여전히 MD 수동 병합이다. 로컬 전용 원칙을 유지하더라도 JSON export/import + merge/dedupe를 추가하면 여러 리뷰어의 결과를 합치기 쉬워진다.
+- 확장성 개선 후보: 코멘트 메타는 localStorage 전체 배열을 매번 파싱/저장한다. 수백~수천 건 이상을 목표로 하면 IndexedDB 메타 저장소 또는 메모리 캐시+증분 저장 구조가 필요하다.
+- 호환성 개선 후보: 스크린샷은 `html2canvas` CDN 지연 로드가 기본이다. CSP/offline 환경에서는 같은 origin helper 파일 산출물 또는 설치 스니펫의 `__RV_H2C_URL__` 예시를 더 명확히 제공하는 편이 낫다.
