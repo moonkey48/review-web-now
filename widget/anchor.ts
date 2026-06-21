@@ -411,6 +411,29 @@ export function scrollToAnchor(anchor: Anchor | null) {
   }
 }
 
+const INTERACTIVE_SELECTOR = [
+  "button",
+  "a[href]",
+  "input",
+  "textarea",
+  "select",
+  "label",
+  '[role="button"]',
+  '[role="link"]',
+  '[role="tab"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '[role="switch"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+].join(",");
+
+function interactiveTarget(el: Element): Element {
+  if (el.matches(INTERACTIVE_SELECTOR)) return el;
+  const closest = el.closest(INTERACTIVE_SELECTOR);
+  return closest || el;
+}
+
 // 위젯 자신(host)을 잠시 클릭 투과시키고 그 아래의 페이지 요소를 집는다
 export function pickElement(x: number, y: number): Element | null {
   const host = document.getElementById(HOST_ID);
@@ -423,5 +446,5 @@ export function pickElement(x: number, y: number): Element | null {
     if (host) host.style.pointerEvents = prev;
   }
   if (!el || el === document.documentElement) return null;
-  return el;
+  return interactiveTarget(el);
 }

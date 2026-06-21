@@ -456,3 +456,45 @@
   bump v0→0.0.1: 범례 2행·**v0 핀이 팔레트색 #0ea5e9(인디고 아님)=색 안정성 통과**·핀 유지. 13항목.
 - **마이그레이션 안전**: 멱등(가드)·write→verify→guard·2탭 benign(idempotent+atomic). 구버전 payload 무손상.
 - **배포**: v0.5.0(Composer 수정 동반). README/설치페이지 @v0.5.0+새 SRI, jsDelivr 검증.
+
+## 18. 프로젝트 목적/기능/개선 리서치
+
+목표: 현재 구현된 기능과 프로젝트 목적을 코드/문서/검증 결과로 확인하고, 사용성·기능 안정성·확장성 관점의 개선 후보를 도출한다.
+
+### 계획
+- [x] README/tasks/docs를 읽고 제품 목적과 사용 시나리오를 정리한다.
+- [x] 위젯 진입, 게이트, 앵커, 저장소, 내보내기, 캡처, 버전 기능의 실제 구현 흐름을 확인한다.
+- [x] 테스트/빌드/가능한 브라우저 스모크로 현재 안정성 신호를 확인한다.
+- [x] 사용성·기능 안정성·확장성 개선점을 우선순위와 근거로 분류한다.
+- [x] 조사 결과와 남은 리스크를 리뷰 섹션에 문서화한다.
+
+### 리뷰
+- 목적: 서버/DB/로그인 없이 대상 페이지 위에 Shadow DOM 리뷰 위젯을 띄우고, 코멘트를 localStorage·스크린샷 blob을 IndexedDB에 저장한 뒤 Markdown/ZIP/폴더로 전달하는 도구.
+- 구현 기능: `?review=` 초대 게이트 + 공용 비밀번호, 북마클릿/데모 강제 마운트, 핀/페이지 코멘트, 다층 앵커(소스·인용·a11y·셀렉터·뷰포트), opt-in 스크린샷, 버전 필터/색상, 내보내기 모달.
+- 검증: `pnpm typecheck` 통과, `pnpm test` 71 passed/0 failed, `pnpm build` 통과(widget.js 82.1KB · bookmarklet 120.7KB), headless Chrome 앵커 하니스 13/13 통과.
+- P1 개선 후보: pathname-only 라우트 키로 query/hash 화면이 섞임, localStorage 실패/손상 시 저장 성공처럼 보일 수 있음, SVG/아이콘 내부 클릭이 실제 컨트롤 대신 내부 노드에 앵커될 수 있음, 동시 스크린샷 캡처 시 host visibility 경합 가능, 내보내기 모달 기본 범위가 패널 필터와 다름.
+- P2 개선 후보: 버전/가시성/name storage 이벤트 동기화 부족, 스크린샷 없는 폴더 저장이 실제로는 다운로드로 동작, 브라우저 하니스가 CI 자동 테스트로 연결되지 않음, README/설치 페이지의 사용법·Markdown 샘플·버전 기능 설명 일부가 현재 UI/출력과 어긋남, 북마클릿 크기가 Safari 호환성에 불리함.
+
+## 19. P1/P2 개선 구현
+
+목표: 18번 리서치의 P1/P2 후보를 실제 구현에 반영한다.
+
+### 계획
+- [x] 라우트 키를 query/hash 포함으로 확장하고 legacy pathname 코멘트 호환을 유지한다.
+- [x] localStorage 쓰기 실패/손상 데이터를 성공처럼 처리하지 않도록 저장 API를 성공/실패 반환형으로 바꾼다.
+- [x] SVG/아이콘 내부 클릭을 실제 interactive ancestor로 승격한다.
+- [x] 스크린샷 캡처를 직렬화해 위젯 host visibility 경합을 제거한다.
+- [x] 내보내기 모달의 기본 범위를 현재 패널 필터와 맞추고 폴더 저장 동작을 일관화한다.
+- [x] 다른 탭의 버전/가시성/name 변경을 현재 탭 UI에 동기화한다.
+- [x] 기본 북마클릿을 CDN loader로 축소하고 self-contained 북마클릿은 fallback 산출물로 유지한다.
+- [x] README/설치 페이지를 현재 UI·MD 출력·버전 기능·런타임 캡처 의존성과 맞춘다.
+- [x] 브라우저 selftest를 자동 실행 가능한 스크립트로 추가한다.
+- [x] typecheck/test/browser-test/build로 검증하고 결과를 문서화한다.
+
+### 리뷰
+- 라우트 키: `routeKey.ts` 추가. `review` 쿼리는 제외하고 query/hash를 포함하며, 기존 pathname-only 코멘트는 같은 pathname에서 함께 표시한다.
+- 저장 안정성: `store.create/update/remove/setShot`이 실패를 반환하고, 손상된 `rv:comments`를 빈 배열로 덮어쓰지 않는다. UI는 실패 토스트를 띄운다.
+- 앵커/캡처: `pickElement`가 interactive ancestor를 우선하고, `captureElement`는 직렬 큐로 host visibility 경합을 피한다.
+- 내보내기/동기화: ExportModal 기본 선택은 현재 패널 필터를 따르고, 폴더 저장은 이미지 0장이어도 폴더 저장을 시도한다. storage 이벤트는 comments/version/visible/name을 동기화한다.
+- 북마클릿: 기본 `bookmarklet.txt`는 CDN loader(0.5KB), `bookmarklet-inline.txt`는 자기완결형 fallback(125KB). `dist`와 Claude 설치 스킬 위젯을 재빌드했다.
+- 검증: `pnpm typecheck` 통과, `pnpm test` 78 passed/0 failed, `pnpm test:browser` 하니스 생성 통과, `pnpm build` 통과(widget.js 85.1KB). 현재 로컬 Chrome은 headless 실행 시 SIGABRT(134)로 종료돼 `--run` 자동 브라우저 실행은 완료하지 못했다.

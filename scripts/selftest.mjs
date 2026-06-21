@@ -14,7 +14,8 @@ const entry = `
 import * as store from ${JSON.stringify(join(root, "widget/store.ts"))};
 import { buildMarkdown } from ${JSON.stringify(join(root, "widget/markdown.ts"))};
 import { parseReviewInvite } from ${JSON.stringify(join(root, "widget/reviewGate.ts"))};
-export { store, buildMarkdown, parseReviewInvite };
+import { pageKeyFromHref, legacyPathFromKey, samePageKey } from ${JSON.stringify(join(root, "widget/routeKey.ts"))};
+export { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, legacyPathFromKey, samePageKey };
 `;
 const entryPath = join(tmp, "entry.ts");
 await writeFile(entryPath, entry, "utf8");
@@ -38,7 +39,7 @@ globalThis.localStorage = {
   clear: () => mem.clear(),
 };
 
-const { store, buildMarkdown, parseReviewInvite } = await import(
+const { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, legacyPathFromKey, samePageKey } = await import(
   bundlePath + "?t=" + process.hrtime.bigint()
 );
 
@@ -67,6 +68,12 @@ ok(
     "민수",
   "review 이름 앞뒤 공백 정리",
 );
+ok(
+  pageKeyFromHref("https://x.test/items?tab=open&review=%ED%99%8D#pane") === "/items?tab=open#pane",
+  "route key: review 쿼리 제외 + query/hash 포함",
+);
+ok(legacyPathFromKey("/items?tab=open#pane") === "/items", "route key: legacy pathname 추출");
+ok(samePageKey("/items", "/items?tab=open#pane"), "route key: legacy pathname과 확장 키 호환");
 
 store.setName("테스터");
 ok(store.getName() === "테스터", "이름 저장/조회");
@@ -261,6 +268,26 @@ store.remove(c3.id);
 ok(store.listAll().length === 2, "remove 동작");
 store.clear();
 ok(store.listAll().length === 0, "clear 동작");
+
+// 저장 실패/손상 방어 — 손상된 raw를 빈 배열로 덮어쓰지 않는다.
+globalThis.localStorage.setItem("rv:comments", "{broken");
+ok(store.commentsReadable() === false, "손상된 rv:comments 감지");
+ok(
+  store.create({ pagePath: "/broken", pageUrl: "http://x/broken", body: "새 글", authorName: "t", anchor: { type: "page" } }) === null,
+  "손상된 rv:comments 위에 새 코멘트를 덮어쓰지 않음",
+);
+ok(globalThis.localStorage.getItem("rv:comments") === "{broken", "손상 raw 보존");
+store.clear();
+const originalSetItem = globalThis.localStorage.setItem;
+globalThis.localStorage.setItem = () => {
+  throw new Error("quota");
+};
+ok(
+  store.create({ pagePath: "/quota", pageUrl: "http://x/quota", body: "저장 실패", authorName: "t", anchor: { type: "page" } }) === null,
+  "localStorage setItem 실패 시 create=null",
+);
+globalThis.localStorage.setItem = originalSetItem;
+store.clear();
 
 // ── 버전 관리 ─────────────────────────────────────────────────
 // clear()가 버전 키도 리셋했는지(확장된 clear)

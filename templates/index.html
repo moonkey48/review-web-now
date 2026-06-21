@@ -150,7 +150,8 @@
           <span>드래그가 안 되나요?</span>
           <button class="copy" data-copy="bookmarklet">북마클릿 코드 복사</button>
           <span>→ 새 북마크를 만들고 주소(URL) 칸에 붙여넣으세요.</span>
-          <span style="margin-left:auto">위젯 __SIZE_KB__KB · 북마클릿 __BMK_KB__KB</span>
+          <button class="copy" data-copy="bookmarklet-inline">자기완결형 코드 복사</button>
+          <span style="margin-left:auto">위젯 __SIZE_KB__KB · 로더 __BMK_KB__KB · 인라인 __INLINE_BMK_KB__KB</span>
         </div>
       </div>
 
@@ -167,11 +168,11 @@
         </div>
         <div class="step">
           <div class="n">3</div>
-          <div><h3>코멘트</h3><p>💬 → <b>📍 코멘트 모드</b> → 화면 요소 클릭 → 필요하면 📷 체크 → 등록.</p></div>
+          <div><h3>코멘트</h3><p>하단 중앙 <b>📍 코멘트 모드 시작</b> → 화면 요소 클릭 → 필요하면 📷 체크 → 등록.</p></div>
         </div>
         <div class="step">
           <div class="n">4</div>
-          <div><h3>전달</h3><p><b>📋 MD 복사</b> 또는 <b>⬇ 다운로드</b>. 스크린샷이 있으면 ZIP에 이미지가 함께 들어갑니다.</p></div>
+          <div><h3>전달</h3><p>우하단 💬 → <b>📤 내보내기</b>. MD 복사·ZIP 다운로드·폴더 저장 중 고르세요.</p></div>
         </div>
         <div class="step full">
           <div class="n">5</div>
@@ -219,11 +220,11 @@
           <li>앱 최상위 레이아웃의 <code>&lt;body&gt;</code> 끝에 한 줄 추가 (CDN에서 바로 로드 — 파일 복사 불필요):</li>
         </ol>
         <div class="snippet">
-          <code id="snip-script">&lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.0/dist/widget.js" integrity="sha384-fkeKJCaIWwpcdr3etuVjmlbxKyVa0GZskSCK+r0vy0VMiMZka4+Oz54NnJ3ND/+R" crossorigin="anonymous" defer&gt;&lt;/script&gt;</code>
+          <code id="snip-script">&lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.1/dist/widget.js" integrity="sha384-v+lB2YyzxQGykG/eKZzeYo57LLUBpsx0QmknMlrRyyoNVyYfwj7Nf41Vqm6+kxhs" crossorigin="anonymous" defer&gt;&lt;/script&gt;</code>
           <button class="copy" data-copy="#snip-script">복사</button>
         </div>
         <p class="muted" style="font-size:13px">
-          설치 URL은 브랜치 별칭 대신 <code>@v1.0.0</code>처럼 버전 태그로 고정하세요.
+          설치 URL은 브랜치 별칭 대신 <code>@v1.0.1</code>처럼 버전 태그로 고정하세요.
         </p>
         <ol start="3" style="padding-left:18px; font-size:14px; margin:6px 0">
           <li>리뷰어에게 <b>초대 링크</b>를 공유:</li>
@@ -240,9 +241,9 @@
         <div class="snippet" style="align-items: flex-start">
           <pre id="snip-prompt" style="margin:0; white-space:pre-wrap; font-size:12.5px; line-height:1.55; font-family:ui-monospace,SFMono-Regular,Menlo,monospace">이 웹 프로젝트에 "Reviewer" 리뷰 위젯을 설치해줘.
 1. 앱 최상위 레이아웃의 &lt;body&gt; 끝에 한 줄 추가(이미 있으면 생략):
-   &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.0/dist/widget.js" integrity="sha384-fkeKJCaIWwpcdr3etuVjmlbxKyVa0GZskSCK+r0vy0VMiMZka4+Oz54NnJ3ND/+R" crossorigin="anonymous" defer&gt;&lt;/script&gt;
+   &lt;script src="https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.1/dist/widget.js" integrity="sha384-v+lB2YyzxQGykG/eKZzeYo57LLUBpsx0QmknMlrRyyoNVyYfwj7Nf41Vqm6+kxhs" crossorigin="anonymous" defer&gt;&lt;/script&gt;
    (Next App Router=app/layout.tsx, Pages=pages/_document.tsx, 그 외=index.html)
-2. CDN URL은 브랜치 별칭이 아니라 현재 문서의 @v1.0.0 같은 버전 태그로 고정.
+2. CDN URL은 브랜치 별칭이 아니라 현재 문서의 @v1.0.1 같은 버전 태그로 고정.
 3. 위젯은 ?review=&lt;리뷰어이름&gt; 링크로 들어왔을 때만 보이고 일반 사용자에겐 안 보인다는 점 반영.
 4. 설치 후 초대 링크 https://&lt;이 앱 주소&gt;/?review=&lt;리뷰어이름&gt; 를 알려줘.</pre>
           <button class="copy" data-copy="#snip-prompt" style="flex-shrink:0">복사</button>
@@ -250,8 +251,9 @@
 
         <ul class="clean" style="margin-top:12px">
           <li><code>?review=이름</code> 초대 링크로 들어왔을 때만 위젯 입장 화면이 뜹니다. <b>일반 사용자는 못 봅니다.</b></li>
-          <li>리뷰는 <b>모두 같은 URL</b>에서 (코멘트는 도메인별 localStorage에 저장됨).</li>
+          <li>리뷰는 쿼리/해시를 포함한 화면별로 저장됩니다. 초대용 <code>review</code> 쿼리는 저장 키에서 제외됩니다.</li>
           <li>서로의 코멘트는 보이지 않습니다 — 각자 MD로 내보내 합칩니다.</li>
+          <li>스크린샷 캡처 라이브러리는 체크한 경우에만 지연 로드됩니다. 사내망에서는 <code>window.__RV_H2C_URL__</code>로 자가호스트 경로를 지정하세요.</li>
         </ul>
       </div>
 
@@ -268,8 +270,8 @@
         </details>
         <details>
           <summary>위젯이 안 떠요 / 막혀요.</summary>
-          <p>보안정책(CSP)이 엄격한 사이트는 북마클릿이 차단될 수 있어요. Safari에서 막히면
-            위 <b>스크립트 태그 방식</b>을 쓰세요. http(비보안) 페이지에서 복사가 막히면 <b>⬇ 다운로드</b>를 이용하세요.</p>
+          <p>보안정책(CSP)이 엄격한 사이트는 북마클릿이나 스크린샷 CDN 로드가 차단될 수 있어요. Safari에서 막히면
+            위 <b>스크립트 태그 방식</b>을 쓰세요. 기본 북마클릿은 짧은 CDN 로더이고, 네트워크가 막히는 환경에서는 자기완결형 코드 복사를 시도할 수 있습니다.</p>
         </details>
         <details>
           <summary>코멘트를 다 지우려면?</summary>
@@ -314,6 +316,8 @@
             var key = btn.getAttribute("data-copy");
             var text = key === "bookmarklet"
               ? document.querySelector("a.bmk").getAttribute("href")
+              : key === "bookmarklet-inline"
+                ? "__INLINE_BOOKMARKLET__"
               : (document.querySelector(key) || {}).textContent || "";
             if (await copy(text.trim())) flash(btn);
           });

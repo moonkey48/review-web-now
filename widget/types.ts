@@ -52,7 +52,7 @@ export interface Shot {
 
 export interface RvComment {
   id: string;
-  pagePath: string; // location.pathname — 페이지 그루핑 키
+  pagePath: string; // normalized route key(pathname + query/hash, review query 제외) — 페이지 그루핑 키
   pageUrl: string; // 작성 시점의 전체 href
   anchor: Anchor | null; // pin | page (null은 들어오지 않지만 안전하게 허용)
   body: string;

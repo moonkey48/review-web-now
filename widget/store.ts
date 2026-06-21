@@ -26,11 +26,13 @@ function readRaw(key: string): string | null {
   }
 }
 
-function writeRaw(key: string, value: string) {
+function writeRaw(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return localStorage.getItem(key) === value;
   } catch {
-    // private 모드 / 용량 초과 — 이번 세션 한정으로만 메모리에 남는다(저장 실패 무시)
+    // private 모드 / 용량 초과
+    return false;
   }
 }
 
@@ -65,18 +67,34 @@ function nowIso(): string {
 }
 
 export function loadAll(): RvComment[] {
+  const result = loadForWrite();
+  return result ?? [];
+}
+
+function loadForWrite(): RvComment[] | null {
   const raw = readRaw(KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as RvComment[]) : [];
+    return Array.isArray(parsed) ? (parsed as RvComment[]) : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-function persist(list: RvComment[]) {
-  writeRaw(KEY, JSON.stringify(list));
+export function commentsReadable(): boolean {
+  return loadForWrite() !== null;
+}
+
+function persist(list: RvComment[]): boolean {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(list);
+  } catch {
+    return false;
+  }
+  if (!writeRaw(KEY, serialized)) return false;
+  return readRaw(KEY) === serialized;
 }
 
 // ── 버전 ──────────────────────────────────────────────────────────────
@@ -92,22 +110,24 @@ export function getVersion(): string {
 }
 
 // 레지스트리는 append-only — 절대 정렬/삭제하지 않는다(색 인덱스 고정의 근거).
-function register(name: string): void {
+function register(name: string): boolean {
   const reg = readStrArr(KEY_VERSIONS);
-  if (!reg.includes(name)) writeRaw(KEY_VERSIONS, JSON.stringify([...reg, name]));
+  if (reg.includes(name)) return true;
+  return writeRaw(KEY_VERSIONS, JSON.stringify([...reg, name]));
 }
 
 // 현재 버전 변경 + 처음 보는 라벨이면 레지스트리 등록. 명시적 가시성 집합이 있으면 새 버전을 켠다(센티넬 보존).
-export function setVersion(v: string): void {
+export function setVersion(v: string): boolean {
   const name = v.trim();
-  if (!name) return;
-  writeRaw(KEY_VERSION, name);
-  register(name);
+  if (!name) return false;
+  let ok = writeRaw(KEY_VERSION, name);
+  ok = register(name) && ok;
   const visRaw = readRaw(KEY_VISIBLE);
   if (visRaw !== null) {
     const vis = readStrArr(KEY_VISIBLE);
-    if (!vis.includes(name)) writeRaw(KEY_VISIBLE, JSON.stringify([...vis, name]));
+    if (!vis.includes(name)) ok = writeRaw(KEY_VISIBLE, JSON.stringify([...vis, name])) && ok;
   }
+  return ok;
 }
 
 export function getKnownVersions(): string[] {
@@ -119,14 +139,15 @@ export function readVisibleRaw(): string[] | null {
   const raw = readRaw(KEY_VISIBLE);
   return raw === null ? null : readStrArr(KEY_VISIBLE);
 }
-export function setVisibleVersions(arr: string[]): void {
-  writeRaw(KEY_VISIBLE, JSON.stringify(arr)); // []도 그대로 — 명시적 "모두 끔"
+export function setVisibleVersions(arr: string[]): boolean {
+  return writeRaw(KEY_VISIBLE, JSON.stringify(arr)); // []도 그대로 — 명시적 "모두 끔"
 }
-export function clearVisible(): void {
+export function clearVisible(): boolean {
   try {
     localStorage.removeItem(KEY_VISIBLE); // 센티넬 복원(전체보기)
+    return localStorage.getItem(KEY_VISIBLE) === null;
   } catch {
-    // noop
+    return false;
   }
 }
 
@@ -162,7 +183,8 @@ export function migrate(): void {
     if (!Number.isNaN(n)) schema = n;
   }
   if (schema >= SCHEMA) return; // 이미 마이그레이션됨 — 재스탬프 없음
-  const all = loadAll();
+  const all = loadForWrite();
+  if (!all) return; // 손상된 raw를 v0 마이그레이션으로 덮어쓰지 않는다.
   let changed = false;
   const next = all.map((c) => {
     if (c.version === undefined || c.version === "") {
@@ -172,7 +194,7 @@ export function migrate(): void {
     return c;
   });
   if (changed) {
-    persist(next);
+    if (!persist(next)) return;
     // 재읽기로 검증 — 쓰기가 조용히 실패했으면 가드를 세우지 않고 다음 부팅에 재시도.
     if (loadAll().some((c) => c.version === undefined || c.version === "")) return;
   }
@@ -185,9 +207,9 @@ function byCreated(a: RvComment, b: RvComment): number {
   return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
 }
 
-export function list(path: string): RvComment[] {
+export function list(path: string, legacyPath?: string): RvComment[] {
   return loadAll()
-    .filter((c) => c.pagePath === path)
+    .filter((c) => c.pagePath === path || (!!legacyPath && c.pagePath === legacyPath))
     .sort(byCreated);
 }
 
@@ -201,7 +223,9 @@ export function create(input: {
   body: string;
   authorName: string;
   anchor: Anchor | null;
-}): RvComment {
+}): RvComment | null {
+  const all = loadForWrite();
+  if (!all) return null;
   const ts = nowIso();
   const c: RvComment = {
     id: uuid(),
@@ -216,17 +240,17 @@ export function create(input: {
     createdAt: ts,
     updatedAt: ts,
   };
-  persist([...loadAll(), c]);
-  return c;
+  return persist([...all, c]) ? c : null;
 }
 
 export function update(
   id: string,
   patch: { body?: string; resolved?: boolean },
-): void {
-  const all = loadAll();
+): boolean {
+  const all = loadForWrite();
+  if (!all) return false;
   const i = all.findIndex((c) => c.id === id);
-  if (i < 0) return;
+  if (i < 0) return false;
   const next: RvComment = { ...all[i], updatedAt: nowIso() };
   if (patch.body !== undefined) next.body = patch.body;
   if (patch.resolved !== undefined) {
@@ -234,20 +258,23 @@ export function update(
     next.resolvedAt = patch.resolved ? nowIso() : null;
   }
   all[i] = next;
-  persist(all);
+  return persist(all);
 }
 
 // 스크린샷 메타만 갱신(실제 blob은 IndexedDB). null이면 첨부 해제.
-export function setShot(id: string, shot: Shot | null): void {
-  const all = loadAll();
+export function setShot(id: string, shot: Shot | null): boolean {
+  const all = loadForWrite();
+  if (!all) return false;
   const i = all.findIndex((c) => c.id === id);
-  if (i < 0) return;
+  if (i < 0) return false;
   all[i] = { ...all[i], shot, updatedAt: nowIso() };
-  persist(all);
+  return persist(all);
 }
 
-export function remove(id: string): void {
-  persist(loadAll().filter((c) => c.id !== id));
+export function remove(id: string): boolean {
+  const all = loadForWrite();
+  if (!all) return false;
+  return persist(all.filter((c) => c.id !== id));
 }
 
 export function clear(): void {

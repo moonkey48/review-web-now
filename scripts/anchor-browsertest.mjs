@@ -12,9 +12,9 @@ const out = join(tmpdir(), "rv-anchor-test");
 await mkdir(out, { recursive: true });
 
 const entry = `
-import { buildAnchor, buildSelector } from ${JSON.stringify(join(root, "widget/anchor.ts"))};
+import { buildAnchor, buildSelector, pickElement } from ${JSON.stringify(join(root, "widget/anchor.ts"))};
 import { reactSource } from ${JSON.stringify(join(root, "widget/react-source.ts"))};
-globalThis.RV = { buildAnchor, buildSelector, reactSource };
+globalThis.RV = { buildAnchor, buildSelector, pickElement, reactSource };
 `;
 const entryPath = join(out, "entry.ts");
 await writeFile(entryPath, entry, "utf8");
@@ -44,6 +44,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   </div>
   <button id="base-ui-_r_3_">결제하기</button>
   <button id="icon-btn"><svg viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></svg></button>
+  <button id="icon-named" aria-label="닫기"><svg viewBox="0 0 16 16"><path id="icon-path" d="M1 1h14v14H1z"/></svg></button>
   <div id="mui-1234">설정</div>
   <input id="search" placeholder="프롬프트 검색…">
 </main>
@@ -88,6 +89,14 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   var ic = centerOf(icon);
   var aIcon = RV.buildAnchor(icon, ic[0], ic[1]);
   ok("H5 빈 요소 needsShot", aIcon.needsShot === true, JSON.stringify({q:aIcon.quote, name:aIcon.a11y && aIcon.a11y.name, needsShot:aIcon.needsShot}));
+
+  // 아이콘 내부(path/svg) 클릭 → 실제 interactive ancestor(button)로 승격
+  var named = document.getElementById("icon-named");
+  var nc = centerOf(named);
+  var picked = RV.pickElement(nc[0], nc[1]);
+  var aNamed = RV.buildAnchor(picked, nc[0], nc[1]);
+  ok("interactive ancestor 승격", picked && picked.id === "icon-named", picked && picked.id);
+  ok("승격 후 a11y 이름", aNamed.a11y && aNamed.a11y.role === "button" && aNamed.a11y.name === "닫기", JSON.stringify(aNamed.a11y));
 
   // 입력 placeholder를 인용으로
   var inp = document.getElementById("search");

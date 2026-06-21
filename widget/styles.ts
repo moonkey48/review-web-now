@@ -339,6 +339,7 @@ input, textarea { font: inherit; color: inherit; }
 .rv-exmodal .rv-card-head { padding: 13px 16px; }
 .rv-exmodal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 .rv-ex-label { font-size: 11px; font-weight: 700; color: #71717a; margin-bottom: 6px; }
+.rv-ex-scope { margin: -2px 0 7px; font-size: 10px; color: #a1a1aa; }
 /* 방식 세그먼티드 */
 .rv-ex-methods { display: flex; gap: 6px; }
 .rv-ex-method {

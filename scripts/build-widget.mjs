@@ -36,6 +36,14 @@ function escapeAttr(s) {
 }
 
 const SKILL_DIR = join(root, ".claude/skills/reviewer-install");
+const CDN_SRC =
+  "https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.1/dist/widget.js";
+const CDN_INTEGRITY =
+  "sha384-v+lB2YyzxQGykG/eKZzeYo57LLUBpsx0QmknMlrRyyoNVyYfwj7Nf41Vqm6+kxhs";
+
+function bookmarkletFromPayload(payload) {
+  return "javascript:" + encodeURIComponent(payload) + "void%200";
+}
 
 // 번들(IIFE 문자열) → dist/{widget.js, bookmarklet.txt, index.html}
 async function emit(code) {
@@ -52,26 +60,33 @@ async function emit(code) {
     /* 스킬 폴더가 없거나 쓰기 불가하면 무시 */
   }
 
-  // 2) 자기완결형 북마클릿: __RV_FORCE__로 노출 게이트를 건너뛴 뒤 번들 실행.
+  // 2) 기본 북마클릿: 작은 CDN 로더. URL 길이 제한을 피하고 버전 태그로 고정한다.
+  const loaderPayload = `(function(){window.__RV_FORCE__=1;if(window.__REVIEWER__){window.__REVIEWER__.remove();return;}var s=document.createElement("script");s.src=${JSON.stringify(CDN_SRC)};s.integrity=${JSON.stringify(CDN_INTEGRITY)};s.crossOrigin="anonymous";s.defer=true;document.head.appendChild(s);})();`;
+  const bookmarklet = bookmarkletFromPayload(loaderPayload);
+  await writeFile(join(DIST, "bookmarklet.txt"), bookmarklet, "utf8");
+
+  // 2-b) fallback 자기완결형 북마클릿: __RV_FORCE__로 노출 게이트를 건너뛴 뒤 번들 실행.
   //    바깥 함수의 첫 문장을 "use strict"로 둬서 번들의 strict 모드를 유지한다.
   const payload =
     '(function(){"use strict";window.__RV_FORCE__=1;' + code + "})();";
-  const bookmarklet = "javascript:" + encodeURIComponent(payload) + "void%200";
-  await writeFile(join(DIST, "bookmarklet.txt"), bookmarklet, "utf8");
+  const inlineBookmarklet = bookmarkletFromPayload(payload);
+  await writeFile(join(DIST, "bookmarklet-inline.txt"), inlineBookmarklet, "utf8");
 
   // 3) 랜딩/데모 페이지 (북마클릿 href·크기 주입)
   const tpl = await readFile(join(root, "templates/index.html"), "utf8");
   const html = tpl
     .replaceAll("__BOOKMARKLET__", escapeAttr(bookmarklet))
+    .replaceAll("__INLINE_BOOKMARKLET__", escapeAttr(inlineBookmarklet))
     .replaceAll("__SIZE_KB__", kb(code.length))
-    .replaceAll("__BMK_KB__", kb(bookmarklet.length));
+    .replaceAll("__BMK_KB__", kb(bookmarklet.length))
+    .replaceAll("__INLINE_BMK_KB__", kb(inlineBookmarklet.length));
   await writeFile(join(DIST, "index.html"), html, "utf8");
 
-  const warn = bookmarklet.length > 65536 ? "  ⚠ 북마클릿이 큼(Safari 주의)" : "";
+  const warn = inlineBookmarklet.length > 65536 ? "  ⚠ 인라인 북마클릿이 큼(Safari 주의)" : "";
   console.log(
-    `[reviewer] widget.js ${kb(code.length)}KB · bookmarklet ${kb(
+    `[reviewer] widget.js ${kb(code.length)}KB · loader bookmarklet ${kb(
       bookmarklet.length,
-    )}KB → dist/${warn}`,
+    )}KB · inline ${kb(inlineBookmarklet.length)}KB → dist/${warn}`,
   );
 }
 

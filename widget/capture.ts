@@ -19,6 +19,7 @@ declare global {
 }
 
 let loading: Promise<H2C> | null = null;
+let captureQueue: Promise<void> = Promise.resolve();
 
 function load(): Promise<H2C> {
   if (window.html2canvas) return Promise.resolve(window.html2canvas);
@@ -112,7 +113,7 @@ function annotate(
 }
 
 // 핀 요소 + 주변 맥락을 PNG로. 캡처 동안 위젯 host를 숨겨 UI가 찍히지 않게 한다.
-export async function captureElement(
+async function captureElementNow(
   el: Element,
   opts?: { badge?: number },
 ): Promise<Capture | null> {
@@ -144,4 +145,17 @@ export async function captureElement(
   );
   if (!blob) return null;
   return { blob, w: canvas.width, h: canvas.height };
+}
+
+export function captureElement(
+  el: Element,
+  opts?: { badge?: number },
+): Promise<Capture | null> {
+  const run = () => captureElementNow(el, opts);
+  const job = captureQueue.then(run, run);
+  captureQueue = job.then(
+    () => undefined,
+    () => undefined,
+  );
+  return job;
 }

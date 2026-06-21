@@ -6,6 +6,7 @@ import { buildMarkdown } from "./markdown";
 import { captureElement } from "./capture";
 import { clearShots, deleteShot, getShot, getShots, putShot } from "./shots";
 import { downloadZip, fsSupported, saveToFolder } from "./exportFiles";
+import { currentPageKey, legacyPathFromKey, samePageKey } from "./routeKey";
 import type { Anchor, RvComment } from "./types";
 
 export interface AppProps {
@@ -98,7 +99,7 @@ function downloadText(filename: string, text: string) {
 
 export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [locked, setLocked] = useState(initialLocked);
-  const [path, setPath] = useState(location.pathname);
+  const [path, setPath] = useState(currentPageKey());
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
   const [panelOpen, setPanelOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false); // 내보내기 모달
@@ -122,6 +123,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
 
   const pathRef = useRef(path);
   pathRef.current = path;
+  const legacyPath = useMemo(() => legacyPathFromKey(path), [path]);
 
   const setName = useCallback((n: string) => {
     setNameState(n);
@@ -153,7 +155,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     }
   }, [showToast]);
 
-  const comments = useMemo(() => store.list(path), [path, rev]);
+  const comments = useMemo(() => store.list(path, legacyPath), [path, legacyPath, rev]);
   const allComments = useMemo(() => store.listAll(), [rev]);
 
   // 버전별 코멘트 수(전체 서비스 기준).
@@ -191,13 +193,18 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     (v: string) => {
       const t = v.trim();
       if (!t) return;
-      store.setVersion(t);
+      if (!store.setVersion(t)) {
+        showToast("버전 저장 실패 — 저장 공간/프라이빗 모드를 확인하세요");
+        return;
+      }
       setCurVerState(t);
-      store.setVisibleVersions([t]);
+      if (!store.setVisibleVersions([t])) {
+        showToast("표시 버전 저장 실패");
+      }
       setVisRaw([t]);
       bumpData();
     },
-    [bumpData],
+    [bumpData, showToast],
   );
   // 버전 표시 토글 — 첫 토글 시 전체 센티넬을 구체 집합으로 구체화.
   const toggleVisible = useCallback(
@@ -205,26 +212,36 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
       setVisRaw((prev) => {
         const base = prev === null ? allVersions : prev;
         const n = base.includes(v) ? base.filter((x) => x !== v) : [...base, v];
-        store.setVisibleVersions(n);
+        if (!store.setVisibleVersions(n)) {
+          showToast("표시 버전 저장 실패");
+          return prev;
+        }
         return n;
       });
     },
-    [allVersions],
+    [allVersions, showToast],
   );
   const showAllVersions = useCallback(() => {
-    store.clearVisible();
+    if (!store.clearVisible()) {
+      showToast("표시 설정 저장 실패");
+      return;
+    }
     setVisRaw(null);
-  }, []);
+  }, [showToast]);
   const showOnlyCurrent = useCallback(() => {
-    store.setVisibleVersions([curVer]);
+    if (!store.setVisibleVersions([curVer])) {
+      showToast("표시 버전 저장 실패");
+      return;
+    }
     setVisRaw([curVer]);
-  }, [curVer]);
+  }, [curVer, showToast]);
 
   // SPA 내비게이션 감지 (pushState/replaceState 훅 + popstate)
   useEffect(() => {
     const onNav = () => {
-      if (location.pathname !== pathRef.current) {
-        setPath(location.pathname);
+      const nextPath = currentPageKey();
+      if (nextPath !== pathRef.current) {
+        setPath(nextPath);
         setActiveId(null);
         setDraft(null);
         setMode(false);
@@ -233,9 +250,11 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     };
     window.addEventListener("reviewer:nav", onNav);
     window.addEventListener("popstate", onNav);
+    window.addEventListener("hashchange", onNav);
     return () => {
       window.removeEventListener("reviewer:nav", onNav);
       window.removeEventListener("popstate", onNav);
+      window.removeEventListener("hashchange", onNav);
     };
   }, []);
 
@@ -243,6 +262,19 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === "rv:comments" || e.key === null) bumpData();
+      if (
+        e.key === "rv:version" ||
+        e.key === "rv:visibleVersions" ||
+        e.key === "rv:versions" ||
+        e.key === null
+      ) {
+        setCurVerState(store.getVersion());
+        setVisRaw(store.readVisibleRaw());
+        bumpData();
+      }
+      if (e.key === "rv:name" || e.key === null) {
+        setNameState(store.getName());
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -379,6 +411,10 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
       authorName: an,
       anchor,
     });
+    if (!c) {
+      showToast("저장 실패 — 저장 공간/프라이빗 모드 또는 손상된 데이터를 확인하세요");
+      return;
+    }
     setDraft(null);
     bumpData();
     // 연속 코멘트 모드: 한 건 남겨도 곧장 다음 위치를 찍을 수 있게 모드를 되살린다
@@ -398,7 +434,10 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           } else if (!cap) {
             showToast("스크린샷 캡처 실패");
           } else if (await putShot(c.id, cap.blob)) {
-            store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h });
+            if (!store.setShot(c.id, { id: c.id, w: cap.w, h: cap.h })) {
+              showToast("스크린샷 메타 저장 실패 — 저장 공간/데이터 상태를 확인하세요");
+              return;
+            }
             bumpData();
             showToast("스크린샷을 첨부했어요");
           } else {
@@ -429,7 +468,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   };
 
   const goTo = (c: RvComment) => {
-    if (c.pagePath === pathRef.current) {
+    if (samePageKey(c.pagePath, pathRef.current)) {
       setPanelOpen(false);
       setActiveId(c.id);
       scrollToAnchor(c.anchor);
@@ -473,16 +512,11 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           return "ok";
         }
         // folder — FS Access 폴더 저장(미지원/실패 시 zip 폴백)
-        if (!shots.size) {
-          downloadText(`review-${fileStamp()}.md`, md);
-          showToast("첨부 이미지가 없어 MD만 저장했어요");
-          return "ok";
-        }
         if (fsSupported()) {
           showToast("저장할 폴더를 선택하세요…");
           const r = await saveToFolder("review.md", md, shots);
           if (r === "ok") {
-            showToast(`폴더에 저장했어요 · 이미지 ${shots.size}장`);
+            showToast(shots.size ? `폴더에 저장했어요 · 이미지 ${shots.size}장` : "폴더에 review.md를 저장했어요");
             return "ok";
           }
           if (r === "cancel") return "cancel";
@@ -505,6 +539,8 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     store.clear();
     clearShots(); // IndexedDB 스크린샷도 함께 정리
     setActiveId(null);
+    setCurVerState(store.getVersion());
+    setVisRaw(store.readVisibleRaw());
     bumpData();
     showToast("모든 코멘트를 삭제했어요");
   };
@@ -597,6 +633,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
           pos={activePos}
           onClose={() => setActiveId(null)}
           onChanged={bumpData}
+          onError={showToast}
         />
       ) : null}
 
@@ -663,6 +700,8 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
         <ExportModal
           comments={allComments}
           colorFor={(v) => store.colorFor(v, curVer)}
+          initialVisible={visibleSet}
+          initialIncludeResolved={!hideResolved}
           onRun={runExport}
           onClose={() => setExportOpen(false)}
         />
@@ -961,12 +1000,14 @@ function Detail({
   pos,
   onClose,
   onChanged,
+  onError,
 }: {
   comment: RvComment;
   number: number;
   pos: { x: number; y: number } | null;
   onClose: () => void;
   onChanged: () => void;
+  onError: (msg: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.body);
@@ -979,21 +1020,30 @@ function Detail({
       };
 
   const toggleResolve = () => {
-    store.update(comment.id, { resolved: !comment.resolved });
+    if (!store.update(comment.id, { resolved: !comment.resolved })) {
+      onError("저장 실패 — 해결 상태를 바꾸지 못했어요");
+      return;
+    }
     onChanged();
   };
 
   const saveEdit = () => {
     const t = text.trim();
     if (!t) return;
-    store.update(comment.id, { body: t });
+    if (!store.update(comment.id, { body: t })) {
+      onError("저장 실패 — 수정 내용을 저장하지 못했어요");
+      return;
+    }
     setEditing(false);
     onChanged();
   };
 
   const del = () => {
     if (window.confirm("이 코멘트를 삭제할까요?")) {
-      store.remove(comment.id);
+      if (!store.remove(comment.id)) {
+        onError("삭제 실패 — 저장 공간/데이터 상태를 확인하세요");
+        return;
+      }
       if (comment.shot) deleteShot(comment.id); // IndexedDB 스크린샷도 정리
       onClose();
       onChanged();
@@ -1207,11 +1257,15 @@ function VersionBar({ ver }: { ver: VerProps }) {
 function ExportModal({
   comments,
   colorFor,
+  initialVisible,
+  initialIncludeResolved,
   onRun,
   onClose,
 }: {
   comments: RvComment[];
   colorFor: (v: string) => string;
+  initialVisible: Set<string>;
+  initialIncludeResolved: boolean;
   onRun: (
     method: "copy" | "zip" | "folder",
     selected: RvComment[],
@@ -1230,9 +1284,9 @@ function ExportModal({
   }, [comments]);
 
   const [checked, setChecked] = useState<Set<string>>(
-    () => new Set(versions.map((v) => v.version)),
+    () => new Set(versions.filter((v) => initialVisible.has(v.version)).map((v) => v.version)),
   );
-  const [includeResolved, setIncludeResolved] = useState(true);
+  const [includeResolved, setIncludeResolved] = useState(initialIncludeResolved);
   const [method, setMethod] = useState<"copy" | "zip" | "folder">("copy");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<"" | "ok" | "fail">("");
@@ -1317,6 +1371,7 @@ function ExportModal({
           {/* 버전 선택 */}
           <div>
             <div className="rv-ex-label">내보낼 버전</div>
+            <div className="rv-ex-scope">현재 패널 표시 조건을 기본으로 사용합니다.</div>
             <div className="rv-ex-vers">
               {versions.map(({ version, count }) => {
                 const on = checked.has(version);
@@ -1512,7 +1567,7 @@ function Panel({
           filtered.map((c) => {
             const lost =
               c.anchor?.type === "pin" &&
-              c.pagePath === currentPath &&
+              samePageKey(c.pagePath, currentPath) &&
               resolveAnchor(c.anchor) === null;
             return (
               <button
@@ -1524,7 +1579,7 @@ function Panel({
                   className="rv-item-num"
                   style={{ ["--rv-c" as any]: ver.colorFor(store.verOf(c)) }}
                 >
-                  {c.pagePath === currentPath ? comments.indexOf(c) + 1 : "•"}
+                  {samePageKey(c.pagePath, currentPath) ? comments.indexOf(c) + 1 : "•"}
                 </span>
                 <span style={{ minWidth: "0", flex: "1", display: "block" }}>
                   <span className="rv-item-text">{c.body}</span>
