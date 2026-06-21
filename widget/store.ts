@@ -86,6 +86,10 @@ export function commentsReadable(): boolean {
   return loadForWrite() !== null;
 }
 
+export function rawComments(): string | null {
+  return readRaw(KEY);
+}
+
 function persist(list: RvComment[]): boolean {
   let serialized: string;
   try {

@@ -498,3 +498,45 @@
 - 내보내기/동기화: ExportModal 기본 선택은 현재 패널 필터를 따르고, 폴더 저장은 이미지 0장이어도 폴더 저장을 시도한다. storage 이벤트는 comments/version/visible/name을 동기화한다.
 - 북마클릿: 기본 `bookmarklet.txt`는 CDN loader(0.5KB), `bookmarklet-inline.txt`는 자기완결형 fallback(125KB). `dist`와 Claude 설치 스킬 위젯을 재빌드했다.
 - 검증: `pnpm typecheck` 통과, `pnpm test` 78 passed/0 failed, `pnpm test:browser` 하니스 생성 통과, `pnpm build` 통과(widget.js 85.1KB). 현재 로컬 Chrome은 headless 실행 시 SIGABRT(134)로 종료돼 `--run` 자동 브라우저 실행은 완료하지 못했다.
+
+## 20. v1.0.1 이후 목적/기능/개선 리서치
+
+목표: v1.0.1 현재 코드베이스 기준으로 구현된 기능과 프로젝트 목적을 재확인하고, 사용성·기능 안정성·확장성 관점에서 다음 개선 후보를 정리한다.
+
+### 계획
+- [x] README/package/scripts/tasks를 기준으로 제품 목적과 배포 상태를 확인한다.
+- [x] 위젯 진입, 게이트, 저장소, 라우트 키, 앵커, 캡처, 내보내기 구현을 코드에서 재확인한다.
+- [x] 테스트/빌드 스크립트와 현재 검증 한계를 확인한다.
+- [x] 사용성·기능 안정성·확장성 개선 후보를 P1/P2로 분류한다.
+- [x] 조사 결과를 리뷰 섹션에 문서화한다.
+
+### 리뷰
+- 목적: 대상 웹앱 위에 Shadow DOM 리뷰 위젯을 얹어 요소별/페이지별 코멘트를 남기고, 서버·DB·로그인 없이 브라우저 저장소(localStorage/IndexedDB)에서 Markdown/ZIP/폴더 산출물로 넘기는 로컬 전용 리뷰 도구다.
+- 현재 구현 기능: `?review=` 초대 게이트와 공용 비밀번호, 북마클릿 강제 마운트, SPA 경로 감지, query/hash 포함 라우트 키(`review` 쿼리 제외), 핀/페이지 코멘트, 다층 앵커(소스·인용·a11y·셀렉터·뷰포트), opt-in 스크린샷, 버전 스탬프/필터/색상, cross-tab storage sync, Markdown/ZIP/폴더 내보내기.
+- 검증: `pnpm typecheck` 통과, `pnpm test` 78 passed/0 failed, `pnpm test:browser` 하니스 생성 통과, `pnpm build` 통과(widget.js 85.1KB · loader bookmarklet 0.5KB · inline bookmarklet 125.0KB). 자동 Chrome `--run`은 기본 CI 경로가 아니며 로컬 환경 의존성이 남아 있다.
+- P1 사용성: `ACCESS_PASSWORD`가 코드 상수라 설치 팀마다 소스 수정/재빌드가 필요하다. `window.__RV_ACCESS_PASSWORD__`/script data attr 같은 런타임 설정으로 옮기면 설치 UX와 배포 재사용성이 좋아진다.
+- P1 기능 안정성: 새 코멘트의 `pageUrl`은 `location.href` 그대로라 초대용 `review` 쿼리가 저장/이동 링크에 남을 수 있다. `pageKeyFromHref`처럼 저장 URL도 `review`를 제거해 리포트/이동 링크를 정리하는 편이 낫다.
+- P1 기능 안정성: 손상된 `rv:comments`는 보존하고 쓰기를 막지만, 사용자에게 복구/백업/초기화 선택지를 주는 UI가 없다. 현재는 실패 토스트만 있으므로 raw 백업 다운로드 후 초기화 플로우가 필요하다.
+- P2 검증/릴리스: README와 `scripts/build-widget.mjs`에 CDN URL/SRI가 수동으로 중복된다. `package.json` 버전과 빌드 결과에서 SRI를 계산해 템플릿/README를 갱신하는 릴리스 스크립트가 필요하다.
+- P2 검증/CI: `test:browser` 기본값은 file:// 하니스 생성이고, 실제 Chrome 실행은 `--run` 옵션과 로컬 Chrome에 묶여 있다. Chrome-for-Testing/Playwright 기반 자동 runner로 고정하면 회귀 검증 신뢰도가 올라간다.
+- P2 확장성: 코멘트 공유는 MD 수동 병합뿐이다. 로컬 전용 원칙을 유지하더라도 JSON export/import + merge/dedupe를 추가하면 여러 리뷰어 작업을 합치기 쉬워진다.
+- P2 사용성/호환성: 스크린샷은 `html2canvas` CDN 지연 로드가 기본이라 CSP/offline 환경에서 실패한다. 설치 스니펫에서 `__RV_H2C_URL__` 설정 예시를 더 명확히 제공하거나 same-origin helper 파일 산출물을 만들 수 있다.
+- P2 규모/성능: 코멘트는 localStorage에 전체 배열로 저장/파싱된다. 수백~수천 건 규모나 긴 세션을 목표로 하면 IndexedDB 메타 저장소 또는 메모리 캐시+증분 쓰기 구조가 필요하다.
+
+## 21. P1 개선 구현 — 비밀번호 제거
+
+목표: 클라이언트 번들에 포함되는 공용 비밀번호를 제거하고, 남은 P1 안정성 이슈를 함께 해결한다.
+
+### 계획
+- [x] `?review=` 진입 시 비밀번호 없이 바로 위젯을 열고, 이름은 쿼리/저장값/작성폼으로 처리한다.
+- [x] 새 코멘트의 `pageUrl`에서 초대용 `review` 쿼리를 제거한다.
+- [x] 손상된 `rv:comments`를 감지했을 때 raw 백업 다운로드와 초기화 UI를 제공한다.
+- [x] README와 lessons를 새 보안/초대 모델에 맞춘다.
+- [x] selftest/typecheck/browser-harness/build로 검증하고 결과를 문서화한다.
+
+### 리뷰
+- 비밀번호 제거: `ACCESS_PASSWORD`와 Lock 화면을 제거했다. 스크립트 태그 모드는 여전히 `?review=`가 있을 때만 마운트되며, review 값은 기본 작성자 이름으로 저장한다. 이름이 없으면 기존 작성폼/패널 이름 설정 흐름을 쓴다.
+- 저장 URL 정리: `pageUrlFromHref()`를 추가해 새 코멘트의 `pageUrl`에서 초대용 `review` 쿼리를 제거한다. `pageKeyFromHref()`와 같은 정규화 규칙을 공유한다.
+- 손상 데이터 복구: `store.rawComments()`를 추가하고, `rv:comments`가 손상되면 복구 모달을 띄워 raw 백업 다운로드와 백업 후 초기화를 제공한다. 손상 상태에서는 기존처럼 데이터를 덮어쓰지 않는다.
+- 문서/설치 스킬: README, 설치 페이지 템플릿, Claude 설치 스킬, lessons를 "위젯 자체 비밀번호 없음 · 실제 접근 제한은 대상 앱 auth" 모델로 갱신했다.
+- 검증: `pnpm typecheck` 통과, `pnpm test` 81 passed/0 failed, `pnpm test:browser` 하니스 생성 통과(`?review=t` 초대 경로 포함), `pnpm build` 통과(widget.js 85.6KB · loader 0.5KB · inline 125.7KB). `node scripts/browser-selftest.mjs --run`은 로컬 Chrome SIGABRT로 실패했고 Chrome 로그는 비어 있었다.

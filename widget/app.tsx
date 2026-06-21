@@ -6,21 +6,15 @@ import { buildMarkdown } from "./markdown";
 import { captureElement } from "./capture";
 import { clearShots, deleteShot, getShot, getShots, putShot } from "./shots";
 import { downloadZip, fsSupported, saveToFolder } from "./exportFiles";
-import { currentPageKey, legacyPathFromKey, samePageKey } from "./routeKey";
+import { currentPageKey, legacyPathFromKey, pageUrlFromHref, samePageKey } from "./routeKey";
 import type { Anchor, RvComment } from "./types";
 
 export interface AppProps {
   // "위젯 숨기기" / 북마클릿 끄기 — 호스트를 완전히 제거한다.
   onHide: () => void;
-  // ?review 최초 진입 시 잠금 상태(공용 비밀번호 입력 필요)
-  locked: boolean;
-  // ?review=<이름>에서 읽은 이름. 있으면 잠금 화면 이름 입력칸에 우선 표시한다.
+  // ?review=<이름>에서 읽은 이름. 있으면 작성자 이름으로 우선 사용한다.
   initialName: string;
 }
-
-// 공용 접근 비밀번호(공유 시크릿). 번들에 포함되므로 암호학적 보안이 아니라
-// 링크를 가진 사람 중에서도 한 번 더 거르는 캐주얼 게이트다.
-const ACCESS_PASSWORD = "letsur01";
 
 const SITE_TITLE = document.title || location.host;
 
@@ -97,8 +91,7 @@ function downloadText(filename: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
-  const [locked, setLocked] = useState(initialLocked);
+export function App({ onHide, initialName }: AppProps) {
   const [path, setPath] = useState(currentPageKey());
   const [rev, setRev] = useState(0); // 데이터 변경 버전 — 올리면 목록 재계산
   const [panelOpen, setPanelOpen] = useState(false);
@@ -120,6 +113,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   const [pendingShots, setPendingShots] = useState(0);
   const [curVer, setCurVerState] = useState(() => store.getVersion()); // 현재(스탬프) 버전
   const [visRaw, setVisRaw] = useState<string[] | null>(() => store.readVisibleRaw()); // null=전체 센티넬, []=모두 끔
+  const [storeBroken, setStoreBroken] = useState(() => !store.commentsReadable());
 
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -130,6 +124,11 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     store.setName(n);
   }, []);
 
+  useEffect(() => {
+    const n = initialName.trim();
+    if (n) store.setName(n);
+  }, [initialName]);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -137,6 +136,36 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   }, []);
 
   const bumpData = useCallback(() => setRev((r) => r + 1), []);
+
+  const refreshStoreHealth = useCallback(() => {
+    setStoreBroken(!store.commentsReadable());
+    bumpData();
+  }, [bumpData]);
+
+  const downloadCorruptComments = useCallback(() => {
+    const raw = store.rawComments() ?? "";
+    downloadText(`reviewer-comments-backup-${fileStamp()}.json`, raw);
+  }, []);
+
+  const resetCorruptComments = useCallback(() => {
+    if (
+      !window.confirm(
+        "손상된 로컬 리뷰 데이터를 백업 파일로 받은 뒤 이 브라우저의 리뷰 데이터를 초기화할까요?",
+      )
+    ) {
+      return;
+    }
+    downloadCorruptComments();
+    store.clear();
+    void clearShots();
+    setActiveId(null);
+    setDraft(null);
+    setCurVerState(store.getVersion());
+    setVisRaw(store.readVisibleRaw());
+    setStoreBroken(!store.commentsReadable());
+    bumpData();
+    showToast("로컬 리뷰 데이터를 초기화했어요");
+  }, [bumpData, downloadCorruptComments, showToast]);
 
   const trackCapture = useCallback((job: Promise<void>) => {
     captureJobs.current = [...captureJobs.current, job];
@@ -261,7 +290,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   // 다른 탭에서의 변경을 반영 (같은 origin localStorage 공유)
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "rv:comments" || e.key === null) bumpData();
+      if (e.key === "rv:comments" || e.key === null) refreshStoreHealth();
       if (
         e.key === "rv:version" ||
         e.key === "rv:visibleVersions" ||
@@ -278,7 +307,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [bumpData]);
+  }, [bumpData, refreshStoreHealth]);
 
   // 레이아웃 변화 → 핀 재배치 (스크롤/리사이즈는 rAF, DOM 변경은 디바운스)
   useEffect(() => {
@@ -318,12 +347,12 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Alt+C: 코멘트 모드 토글 (안 쓰는 단축키). 입력 중·작성·내보내기·패널 열림·잠금 시엔 무시.
+  // Alt+C: 코멘트 모드 토글 (안 쓰는 단축키). 입력 중·작성·내보내기·패널 열림 시엔 무시.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
       if (e.code !== "KeyC" && e.key.toLowerCase() !== "c") return;
-      if (locked || draft || exportOpen || panelOpen || isEditableFocused()) return;
+      if (draft || exportOpen || panelOpen || isEditableFocused()) return;
       e.preventDefault();
       if (sticky) {
         setMode(false);
@@ -337,7 +366,7 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [locked, draft, exportOpen, panelOpen, sticky]);
+  }, [draft, exportOpen, panelOpen, sticky]);
 
   // 활성 코멘트의 버전을 숨기면(또는 해결됨 필터로 빠지면) 상세 팝업도 함께 닫는다.
   useEffect(() => {
@@ -348,24 +377,6 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
       setActiveId(null);
     }
   }, [activeId, comments, visibleSet, hideResolved]);
-
-  // 잠금(공용 비밀번호 미통과) 상태에선 위젯 대신 입장 화면만 보여준다.
-  if (locked) {
-    return (
-      <div className="rv-root">
-        <style>{CSS_TEXT}</style>
-        <Lock
-          initialName={name}
-          onUnlock={(nick) => {
-            setName(nick);
-            setLocked(false);
-            setPanelOpen(true); // 첫 진입 시 위젯을 펼친 활성 상태로
-          }}
-          onClose={onHide}
-        />
-      </div>
-    );
-  }
 
   const startMode = () => {
     setPanelOpen(false);
@@ -406,12 +417,13 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
     }
     const c = store.create({
       pagePath: pathRef.current,
-      pageUrl: location.href,
+      pageUrl: pageUrlFromHref(location.href),
       body: text,
       authorName: an,
       anchor,
     });
     if (!c) {
+      setStoreBroken(!store.commentsReadable());
       showToast("저장 실패 — 저장 공간/프라이빗 모드 또는 손상된 데이터를 확인하세요");
       return;
     }
@@ -537,10 +549,11 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
       return;
     }
     store.clear();
-    clearShots(); // IndexedDB 스크린샷도 함께 정리
+    void clearShots(); // IndexedDB 스크린샷도 함께 정리
     setActiveId(null);
     setCurVerState(store.getVersion());
     setVisRaw(store.readVisibleRaw());
+    setStoreBroken(!store.commentsReadable());
     bumpData();
     showToast("모든 코멘트를 삭제했어요");
   };
@@ -580,6 +593,17 @@ export function App({ onHide, locked: initialLocked, initialName }: AppProps) {
   return (
     <div className="rv-root">
       <style>{CSS_TEXT}</style>
+
+      {storeBroken ? (
+        <StorageRecovery
+          onBackup={() => {
+            downloadCorruptComments();
+            showToast("손상 데이터 백업 파일을 내려받았어요");
+          }}
+          onReset={resetCorruptComments}
+          onHide={onHide}
+        />
+      ) : null}
 
       {mode ? <Overlay onPick={onPick} onCancel={exitMode} /> : null}
 
@@ -812,73 +836,33 @@ function DraftHighlight({ anchor }: { anchor: Anchor }) {
   );
 }
 
-/* ── 입장(잠금) 화면: 이름 + 공용 비밀번호 ── */
-function Lock({
-  initialName,
-  onUnlock,
-  onClose,
+/* ── 손상된 localStorage 복구 ───────────────────── */
+function StorageRecovery({
+  onBackup,
+  onReset,
+  onHide,
 }: {
-  initialName: string;
-  onUnlock: (nickname: string) => void;
-  onClose: () => void;
+  onBackup: () => void;
+  onReset: () => void;
+  onHide: () => void;
 }) {
-  const [nick, setNick] = useState(initialName);
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState(false);
-
-  const submit = () => {
-    const n = nick.trim();
-    if (!n || !pw) return;
-    if (pw !== ACCESS_PASSWORD) {
-      setErr(true);
-      return;
-    }
-    onUnlock(n);
-  };
-
   return (
-    <div className="rv-lock-backdrop">
-      <div className="rv-lock">
-        <div className="rv-lock-title">리뷰 참여</div>
-        <p className="rv-lock-desc">이름과 공용 비밀번호를 입력하세요.</p>
-        <input
-          className="rv-input"
-          placeholder="이름(닉네임)"
-          value={nick}
-          onInput={(e: Event) =>
-            setNick((e.currentTarget as HTMLInputElement).value)
-          }
-        />
-        <input
-          className="rv-input"
-          type="password"
-          placeholder="공용 비밀번호"
-          value={pw}
-          autoFocus
-          onInput={(e: Event) => {
-            setErr(false);
-            setPw((e.currentTarget as HTMLInputElement).value);
-          }}
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-        />
-        {err ? (
-          <div className="rv-lock-err">비밀번호가 올바르지 않습니다.</div>
-        ) : null}
+    <div className="rv-modal-backdrop">
+      <div className="rv-recovery">
+        <div className="rv-modal-title">로컬 리뷰 데이터를 읽을 수 없습니다</div>
+        <p className="rv-modal-desc">
+          이 브라우저의 `rv:comments` 값이 손상되어 새 코멘트를 안전하게 저장하지
+          않습니다. 원본을 백업한 뒤 초기화하세요.
+        </p>
         <div className="rv-row-end">
-          <button className="rv-btn rv-btn-ghost" onClick={onClose}>
+          <button className="rv-btn rv-btn-ghost" onClick={onHide}>
             닫기
           </button>
-          <button
-            className="rv-btn rv-btn-primary"
-            disabled={!nick.trim() || !pw}
-            onClick={submit}
-          >
-            시작
+          <button className="rv-btn rv-btn-ghost" onClick={onBackup}>
+            백업 다운로드
+          </button>
+          <button className="rv-btn rv-btn-primary" onClick={onReset}>
+            백업 후 초기화
           </button>
         </div>
       </div>
@@ -1338,7 +1322,7 @@ function ExportModal({
         : { copy: "MD 복사", zip: "ZIP 다운로드", folder: "폴더에 저장" }[method];
 
   return (
-    <div className="rv-lock-backdrop">
+    <div className="rv-modal-backdrop">
       <div className="rv-card rv-exmodal">
         <div className="rv-card-head">
           <span className="rv-card-title">내보내기</span>

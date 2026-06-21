@@ -25,20 +25,19 @@ declare global {
   }
 }
 
-// 노출 게이트 + 잠금 여부.
+// 노출 게이트.
 //  - 북마클릿/데모(__RV_FORCE__): 바로 표시, 비번 없음
-//  - ?review 진입: 마운트하되 "잠금"(공용 비번 입력 화면)
-//    review 값은 이름 입력칸의 초기값으로 쓴다.
+//  - ?review 진입: 바로 표시. review 값은 작성자 이름 초기값으로 쓴다.
 //  - 그 외(일반 사용자): 아무것도 안 함
-function shouldMount(): { mount: boolean; locked: boolean; initialName: string } {
+function shouldMount(): { mount: boolean; initialName: string } {
   if (window.__RV_FORCE__) {
-    return { mount: true, locked: false, initialName: "" };
+    return { mount: true, initialName: "" };
   }
 
   const invite = parseReviewInvite(location.href);
-  if (invite) return { mount: true, locked: true, initialName: invite.name };
+  if (invite) return { mount: true, initialName: invite.name };
 
-  return { mount: false, locked: false, initialName: "" };
+  return { mount: false, initialName: "" };
 }
 
 // pushState/replaceState 훅 — SPA 경로 변경을 위젯에 알린다.
@@ -63,7 +62,7 @@ function installHistoryHook() {
   };
 }
 
-function mount(locked: boolean, initialName: string) {
+function mount(initialName: string) {
   installHistoryHook();
   migrate(); // 버전 없는 기존 코멘트를 "v0"로 일회성 스탬프(멱등·loadAll은 순수 읽기 유지)
 
@@ -81,7 +80,6 @@ function mount(locked: boolean, initialName: string) {
   render(
     <App
       onHide={remove}
-      locked={locked}
       initialName={initialName}
     />,
     shadow,
@@ -95,11 +93,11 @@ function start() {
     window.__REVIEWER__.remove();
     return;
   }
-  const { mount: should, locked, initialName } = shouldMount(); // 게이트
+  const { mount: should, initialName } = shouldMount(); // 게이트
   if (!should) return; // 초대받지 않은 사용자에겐 아무것도 안 함
   if (document.getElementById(HOST_ID)) return; // 방어적 중복 가드
   if (!document.body) return;
-  mount(locked, initialName);
+  mount(initialName);
 }
 
 if (document.readyState === "loading") {

@@ -1,15 +1,28 @@
 const INVITE_PARAM = "review";
 
+function urlWithoutInvite(href: string): URL {
+  const base =
+    typeof location === "undefined" ? "https://reviewer.local" : location.origin;
+  const url = new URL(href, base);
+  url.searchParams.delete(INVITE_PARAM);
+  return url;
+}
+
 export function pageKeyFromHref(href: string): string {
   try {
-    const base =
-      typeof location === "undefined" ? "https://reviewer.local" : location.origin;
-    const url = new URL(href, base);
-    url.searchParams.delete(INVITE_PARAM);
+    const url = urlWithoutInvite(href);
     const search = url.searchParams.toString();
     return url.pathname + (search ? `?${search}` : "") + url.hash;
   } catch {
     return typeof location === "undefined" ? "/" : location.pathname;
+  }
+}
+
+export function pageUrlFromHref(href: string): string {
+  try {
+    return urlWithoutInvite(href).href;
+  } catch {
+    return href;
   }
 }
 

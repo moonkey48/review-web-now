@@ -70,21 +70,20 @@ input, textarea { font: inherit; color: inherit; }
 }
 .rv-modebar-exit:hover { background: #e4e4e7; }
 
-/* ── 입장(잠금) 화면 ───────────────────────── */
-.rv-lock-backdrop {
+/* ── 모달 백드롭 / 복구 화면 ───────────────── */
+.rv-modal-backdrop {
   position: fixed; inset: 0; z-index: 2147483646;
   background: rgba(0,0,0,.4);
   display: flex; align-items: center; justify-content: center;
 }
-.rv-lock {
-  width: 300px; padding: 18px; display: flex; flex-direction: column; gap: 10px;
+.rv-recovery {
+  width: min(380px, calc(100vw - 32px)); padding: 18px; display: flex; flex-direction: column; gap: 10px;
   background: #fff; border: 1px solid #e4e4e7; border-radius: 12px;
   box-shadow: 0 16px 48px rgba(0,0,0,.28);
 }
-.rv-lock-title { font-weight: 700; font-size: 16px; }
-.rv-lock-desc { font-size: 12px; color: #71717a; margin: -4px 0 2px; }
-.rv-lock-err { font-size: 12px; color: #dc2626; }
-.rv-lock .rv-row-end { margin-top: 4px; }
+.rv-modal-title { font-weight: 700; font-size: 16px; }
+.rv-modal-desc { font-size: 12px; color: #71717a; margin: -4px 0 2px; }
+.rv-recovery .rv-row-end { margin-top: 4px; flex-wrap: wrap; }
 
 /* ── 코멘트 모드 시작 바 (중앙 하단) ── */
 .rv-startbar {
@@ -329,7 +328,7 @@ input, textarea { font: inherit; color: inherit; }
 .rv-export-row { display: flex; gap: 6px; align-items: center; }
 .rv-export-hint { font-size: 11px; color: #a1a1aa; margin-left: auto; white-space: nowrap; }
 
-/* ── 내보내기 모달 (.rv-lock-backdrop 위) ── */
+/* ── 내보내기 모달 (.rv-modal-backdrop 위) ── */
 .rv-exmodal {
   width: min(440px, calc(100vw - 32px));
   max-height: min(80vh, 640px);

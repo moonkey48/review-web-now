@@ -122,7 +122,10 @@ async function buildWidgetHarness() {
 </main>
 <script>
   localStorage.clear();
-  var currentKey = location.pathname + location.search + location.hash;
+  var routeUrl = new URL(location.href);
+  routeUrl.searchParams.delete("review");
+  var routeSearch = routeUrl.searchParams.toString();
+  var currentKey = routeUrl.pathname + (routeSearch ? "?" + routeSearch : "") + routeUrl.hash;
   localStorage.setItem("rv:comments", JSON.stringify([
     { id:"exact", pagePath: currentKey, pageUrl: location.href, anchor:{type:"pin", selector:"#exact", xPercent:50, yPercent:50}, body:"exact", authorName:"t", version:"v1", resolved:false, resolvedAt:null, createdAt:"2026-06-21T00:00:00Z", updatedAt:"2026-06-21T00:00:00Z" },
     { id:"legacy", pagePath: location.pathname, pageUrl: location.href, anchor:{type:"pin", selector:"#legacy", xPercent:50, yPercent:50}, body:"legacy", authorName:"t", version:"v1", resolved:false, resolvedAt:null, createdAt:"2026-06-21T00:01:00Z", updatedAt:"2026-06-21T00:01:00Z" },
@@ -131,7 +134,6 @@ async function buildWidgetHarness() {
   localStorage.setItem("rv:version", "v1");
   localStorage.setItem("rv:versions", JSON.stringify(["v1","v2"]));
   localStorage.setItem("rv:visibleVersions", JSON.stringify(["v1"]));
-  window.__RV_FORCE__ = 1;
 </script>
 <script>${widget}</script>
 <pre id="out">running</pre>
@@ -144,6 +146,8 @@ async function buildWidgetHarness() {
   var host = document.getElementById("reviewer-widget-host");
   var root = host && host.shadowRoot;
   ok("widget mounted", !!root, !!root);
+  ok("invite mounts without password", !!root.querySelector(".rv-startbar"), !!root.querySelector(".rv-startbar"));
+  ok("invite name persisted", localStorage.getItem("rv:name") === "t", localStorage.getItem("rv:name"));
   ok("current key + legacy visible, other query hidden", root.querySelectorAll(".rv-pin").length === 2, root.querySelectorAll(".rv-pin").length);
 
   location.hash = "changed";
@@ -180,11 +184,11 @@ if (!process.argv.includes("--run")) {
   const anchorHarness = await generateAnchorHarness();
   const widgetHarness = await buildWidgetHarness();
   console.log("anchor=file://" + anchorHarness);
-  console.log("widget=file://" + widgetHarness + "?tab=open#pane");
+  console.log("widget=file://" + widgetHarness + "?tab=open&review=t#pane");
 } else {
   const anchorCount = await runAnchorHarness();
   const widgetHarness = await buildWidgetHarness();
-  const widgetResult = jsonFromPre(await dumpDom("file://" + widgetHarness + "?tab=open#pane"));
+  const widgetResult = jsonFromPre(await dumpDom("file://" + widgetHarness + "?tab=open&review=t#pane"));
   if (widgetResult.passed !== widgetResult.total) {
     throw new Error("widget harness failed: " + JSON.stringify(widgetResult.fails));
   }

@@ -14,8 +14,8 @@ const entry = `
 import * as store from ${JSON.stringify(join(root, "widget/store.ts"))};
 import { buildMarkdown } from ${JSON.stringify(join(root, "widget/markdown.ts"))};
 import { parseReviewInvite } from ${JSON.stringify(join(root, "widget/reviewGate.ts"))};
-import { pageKeyFromHref, legacyPathFromKey, samePageKey } from ${JSON.stringify(join(root, "widget/routeKey.ts"))};
-export { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, legacyPathFromKey, samePageKey };
+import { pageKeyFromHref, pageUrlFromHref, legacyPathFromKey, samePageKey } from ${JSON.stringify(join(root, "widget/routeKey.ts"))};
+export { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, pageUrlFromHref, legacyPathFromKey, samePageKey };
 `;
 const entryPath = join(tmp, "entry.ts");
 await writeFile(entryPath, entry, "utf8");
@@ -39,7 +39,7 @@ globalThis.localStorage = {
   clear: () => mem.clear(),
 };
 
-const { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, legacyPathFromKey, samePageKey } = await import(
+const { store, buildMarkdown, parseReviewInvite, pageKeyFromHref, pageUrlFromHref, legacyPathFromKey, samePageKey } = await import(
   bundlePath + "?t=" + process.hrtime.bigint()
 );
 
@@ -71,6 +71,14 @@ ok(
 ok(
   pageKeyFromHref("https://x.test/items?tab=open&review=%ED%99%8D#pane") === "/items?tab=open#pane",
   "route key: review 쿼리 제외 + query/hash 포함",
+);
+ok(
+  pageUrlFromHref("https://x.test/items?tab=open&review=%ED%99%8D#pane") === "https://x.test/items?tab=open#pane",
+  "page url: review 쿼리 제외 + origin 포함",
+);
+ok(
+  pageUrlFromHref("https://x.test/items?review=%ED%99%8D#pane") === "https://x.test/items#pane",
+  "page url: review만 있던 query 제거",
 );
 ok(legacyPathFromKey("/items?tab=open#pane") === "/items", "route key: legacy pathname 추출");
 ok(samePageKey("/items", "/items?tab=open#pane"), "route key: legacy pathname과 확장 키 호환");
@@ -272,6 +280,7 @@ ok(store.listAll().length === 0, "clear 동작");
 // 저장 실패/손상 방어 — 손상된 raw를 빈 배열로 덮어쓰지 않는다.
 globalThis.localStorage.setItem("rv:comments", "{broken");
 ok(store.commentsReadable() === false, "손상된 rv:comments 감지");
+ok(store.rawComments() === "{broken", "손상 raw 조회");
 ok(
   store.create({ pagePath: "/broken", pageUrl: "http://x/broken", body: "새 글", authorName: "t", anchor: { type: "page" } }) === null,
   "손상된 rv:comments 위에 새 코멘트를 덮어쓰지 않음",
