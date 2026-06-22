@@ -642,6 +642,24 @@ export function App({ onHide, initialName }: AppProps) {
     showToast("모든 코멘트를 삭제했어요");
   };
 
+  const deleteComment = useCallback(
+    (comment: RvComment) => {
+      if (!window.confirm("이 코멘트를 삭제할까요? 되돌릴 수 없습니다.")) {
+        return;
+      }
+      if (!store.remove(comment.id)) {
+        setStoreBroken(!store.commentsReadable());
+        showToast("삭제 실패 — 저장 공간/데이터 상태를 확인하세요");
+        return;
+      }
+      if (comment.shot) void deleteShot(comment.id);
+      setActiveId((id) => (id === comment.id ? null : id));
+      bumpData();
+      showToast("코멘트를 삭제했어요");
+    },
+    [bumpData, showToast],
+  );
+
   // 전체 서비스 기준 미해결 카운트
   const unresolved = allComments.filter((c) => !c.resolved).length;
   const pins = comments
@@ -742,6 +760,7 @@ export function App({ onHide, initialName }: AppProps) {
           onClose={() => setActiveId(null)}
           onChanged={bumpData}
           onError={showToast}
+          onDelete={deleteComment}
         />
       ) : null}
 
@@ -778,6 +797,7 @@ export function App({ onHide, initialName }: AppProps) {
             setExportOpen(true);
           }}
           onImportJson={importJson}
+          onDeleteComment={deleteComment}
           onClearAll={clearAll}
           pendingShots={pendingShots}
           ver={{
@@ -1070,6 +1090,7 @@ function Detail({
   onClose,
   onChanged,
   onError,
+  onDelete,
 }: {
   comment: RvComment;
   number: number;
@@ -1077,6 +1098,7 @@ function Detail({
   onClose: () => void;
   onChanged: () => void;
   onError: (msg: string) => void;
+  onDelete: (comment: RvComment) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(comment.body);
@@ -1107,18 +1129,6 @@ function Detail({
     onChanged();
   };
 
-  const del = () => {
-    if (window.confirm("이 코멘트를 삭제할까요?")) {
-      if (!store.remove(comment.id)) {
-        onError("삭제 실패 — 저장 공간/데이터 상태를 확인하세요");
-        return;
-      }
-      if (comment.shot) deleteShot(comment.id); // IndexedDB 스크린샷도 정리
-      onClose();
-      onChanged();
-    }
-  };
-
   return (
     <div
       className="rv-card rv-thread"
@@ -1135,7 +1145,7 @@ function Detail({
           >
             ✓ {comment.resolved ? "해결됨" : "해결"}
           </button>
-          <button className="rv-del-btn" onClick={del} title="이 코멘트 삭제">
+          <button className="rv-del-btn" onClick={() => onDelete(comment)} title="이 코멘트 삭제">
             🗑 삭제
           </button>
           <button className="rv-icon-btn" onClick={onClose}>
@@ -1597,6 +1607,7 @@ function Panel({
   onGoTo,
   onOpenExport,
   onImportJson,
+  onDeleteComment,
   onClearAll,
   pendingShots,
   ver,
@@ -1614,6 +1625,7 @@ function Panel({
   onGoTo: (c: RvComment) => void;
   onOpenExport: () => void;
   onImportJson: (file: File) => void;
+  onDeleteComment: (comment: RvComment) => void;
   onClearAll: () => void;
   pendingShots: number;
   ver: VerProps;
@@ -1677,31 +1689,48 @@ function Panel({
               c.anchor?.type === "pin" &&
               samePageKey(c.pagePath, currentPath) &&
               resolveAnchor(c.anchor) === null;
+            const currentPageIndex = comments.findIndex((x) => x.id === c.id);
             return (
-              <button
+              <div
                 key={c.id}
                 className={`rv-item${c.resolved ? " rv-resolved" : ""}`}
-                onClick={() => onGoTo(c)}
               >
-                <span
-                  className="rv-item-num"
-                  style={{ ["--rv-c" as any]: ver.colorFor(store.verOf(c)) }}
+                <button
+                  className="rv-item-main"
+                  onClick={() => onGoTo(c)}
                 >
-                  {samePageKey(c.pagePath, currentPath) ? comments.indexOf(c) + 1 : "•"}
-                </span>
-                <span style={{ minWidth: "0", flex: "1", display: "block" }}>
-                  <span className="rv-item-text">{c.body}</span>
-                  <span className="rv-item-meta" style={{ display: "block" }}>
-                    {c.authorName} · {timeLabel(c.createdAt)} · {c.pagePath}
-                    {c.anchor?.type !== "pin" ? (
-                      <span className="rv-badge rv-badge-page">페이지</span>
-                    ) : null}
-                    {lost ? (
-                      <span className="rv-badge rv-badge-lost">위치 유실</span>
-                    ) : null}
+                  <span
+                    className="rv-item-num"
+                    style={{ ["--rv-c" as any]: ver.colorFor(store.verOf(c)) }}
+                  >
+                    {currentPageIndex >= 0 ? currentPageIndex + 1 : "•"}
                   </span>
-                </span>
-              </button>
+                  <span className="rv-item-body">
+                    <span className="rv-item-text">{c.body}</span>
+                    <span className="rv-item-meta">
+                      {c.authorName} · {timeLabel(c.createdAt)} · {c.pagePath}
+                      {c.anchor?.type !== "pin" ? (
+                        <span className="rv-badge rv-badge-page">페이지</span>
+                      ) : null}
+                      {lost ? (
+                        <span className="rv-badge rv-badge-lost">위치 유실</span>
+                      ) : null}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  className="rv-item-del"
+                  title="이 코멘트 삭제"
+                  aria-label="이 코멘트 삭제"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDeleteComment(c);
+                  }}
+                >
+                  🗑
+                </button>
+              </div>
             );
           })
         )}

@@ -608,3 +608,40 @@
   - `pnpm test:browser` 통과: anchor/widget file 하니스 생성
   - `pnpm build` 통과: widget.js 89.3KB, loader bookmarklet 0.5KB, inline 131.0KB(Safari 주의)
   - `node scripts/release-check.mjs --strict` 통과
+
+## 25. 위젯 패널 코멘트 개별 삭제
+
+목표: 패널 목록에서 코멘트를 바로 삭제할 수 있게 해, 핀 상세 팝업을 찾지 않아도 개별 코멘트를 정리할 수 있도록 한다.
+
+### 계획
+- [x] 기존 `store.remove`와 `deleteShot` 흐름을 재사용해 코멘트 메타와 IndexedDB 스크린샷 blob을 함께 정리한다.
+- [x] `Panel`에 `onDeleteComment` 콜백을 추가하고, 목록 항목을 본문 이동 영역과 삭제 버튼 영역으로 분리한다.
+- [x] 삭제 버튼 클릭 시 목록 항목의 이동 클릭이 같이 실행되지 않도록 이벤트 전파를 막고, 확인창/실패 토스트를 제공한다.
+- [x] 삭제된 코멘트가 현재 활성 상세 팝업이면 함께 닫고, 목록/핀/배지를 즉시 갱신한다.
+- [x] `pnpm typecheck`, `pnpm test`, `pnpm build`로 검증하고 결과를 이 섹션에 문서화한다.
+
+### 리뷰
+- 패널 목록 항목을 `rv-item-main` 이동 버튼과 `rv-item-del` 삭제 버튼으로 분리했다. 삭제 버튼은 `preventDefault`/`stopPropagation`으로 행 이동과 충돌하지 않는다.
+- 개별 삭제는 App 레벨 `deleteComment()`가 담당한다. `store.remove()` 실패 시 토스트와 저장소 상태 갱신을 수행하고, 성공 시 첨부 스크린샷 blob(`deleteShot`)도 함께 정리한다.
+- 삭제한 코멘트가 현재 열린 상세 팝업이면 `activeId`를 비워 상세 팝업/핀/배지가 즉시 갱신된다.
+- 패널 번호 계산은 객체 참조 비교(`comments.indexOf(c)`) 대신 id 기준 `findIndex`로 바꿔 페이지 코멘트가 `0`으로 표시될 수 있는 문제를 함께 수정했다.
+- 검증:
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 92 passed / 0 failed
+  - `pnpm build` 통과: widget.js 90.2KB, loader bookmarklet 0.5KB, inline 132.3KB(Safari 주의)
+  - `pnpm test:browser` 통과: anchor/widget file 하니스 생성
+
+## 26. v1.0.3 버전업/커밋/푸시
+
+목표: 패널 코멘트 개별 삭제 기능을 `v1.0.3`으로 배포하고, 설치 문서/CDN/SRI/태그를 일관되게 맞춘다.
+
+### 계획
+- [x] `package.json` 버전을 `1.0.3`으로 올린다.
+- [x] README, 설치 페이지 템플릿, 북마클릿 로더 CDN URL/SRI를 `@v1.0.3`으로 갱신한다.
+- [x] `pnpm build`로 `dist/`와 설치 스킬 위젯을 재생성한다.
+- [x] typecheck/selftest/browser-harness/release strict check를 실행한다.
+- [ ] 커밋, 브랜치 push, `v1.0.3` 태그 push를 완료한다.
+- [ ] jsDelivr `@v1.0.3/dist/widget.js` 응답과 SRI를 확인한다.
+
+### 리뷰
+- 구현 후 작성 예정.

@@ -37,9 +37,9 @@ function escapeAttr(s) {
 
 const SKILL_DIR = join(root, ".claude/skills/reviewer-install");
 const CDN_SRC =
-  "https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.2/dist/widget.js";
+  "https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.3/dist/widget.js";
 const CDN_INTEGRITY =
-  "sha384-jy9X04MR8xtRMZHvsXpPxodwTLDnr6cN79voitD7Ig1Z06N+aovsIKuywetHmUrk";
+  "sha384-xf1UOlDPo2ilrU5neUJA1bBARP/xkHfD26CiZsgKL3AokSUZCtzISJlgPjbtgool";
 
 function bookmarkletFromPayload(payload) {
   return "javascript:" + encodeURIComponent(payload) + "void%200";

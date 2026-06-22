@@ -283,10 +283,21 @@ input, textarea { font: inherit; color: inherit; }
 .rv-check { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #71717a; cursor: pointer; }
 .rv-list { overflow-y: auto; padding: 0 8px 8px; flex: 1; }
 .rv-item {
-  width: 100%; text-align: left; display: flex; gap: 8px; align-items: flex-start;
-  padding: 8px; border-radius: 8px;
+  width: 100%; display: flex; gap: 4px; align-items: stretch;
+  border-radius: 8px; overflow: hidden;
 }
 .rv-item:hover { background: #f4f4f5; }
+.rv-item-main {
+  min-width: 0; flex: 1; text-align: left; display: flex; gap: 8px; align-items: flex-start;
+  padding: 8px;
+}
+.rv-item-body { min-width: 0; flex: 1; display: block; }
+.rv-item-del {
+  flex-shrink: 0; align-self: center; width: 28px; height: 28px; margin-right: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; color: #dc2626; font-size: 12px; opacity: .72;
+}
+.rv-item-del:hover { background: #fee2e2; color: #b91c1c; opacity: 1; }
 .rv-item-num {
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
   background: var(--rv-c, #6366f1); color: #fff; font-size: 10px; font-weight: 700;
