@@ -640,8 +640,19 @@
 - [x] README, 설치 페이지 템플릿, 북마클릿 로더 CDN URL/SRI를 `@v1.0.3`으로 갱신한다.
 - [x] `pnpm build`로 `dist/`와 설치 스킬 위젯을 재생성한다.
 - [x] typecheck/selftest/browser-harness/release strict check를 실행한다.
-- [ ] 커밋, 브랜치 push, `v1.0.3` 태그 push를 완료한다.
-- [ ] jsDelivr `@v1.0.3/dist/widget.js` 응답과 SRI를 확인한다.
+- [x] 커밋, 브랜치 push, `v1.0.3` 태그 push를 완료한다.
+- [x] jsDelivr `@v1.0.3/dist/widget.js` 응답과 SRI를 확인한다.
 
 ### 리뷰
-- 구현 후 작성 예정.
+- 릴리스 커밋: `1d56464` (`Release v1.0.3 panel comment deletion`)
+- 브랜치 push: `feat/layered-anchor-screenshots` → `origin/feat/layered-anchor-screenshots`
+- 태그: `v1.0.3` annotated tag를 `1d56464`에 생성/푸시했다.
+- `v1.0.3` SRI: `sha384-xf1UOlDPo2ilrU5neUJA1bBARP/xkHfD26CiZsgKL3AokSUZCtzISJlgPjbtgool`
+- CDN 확인: `https://cdn.jsdelivr.net/gh/moonkey48/review-web-now@v1.0.3/dist/widget.js`가 HTTP 200, `x-jsd-version: 1.0.3`, `content-length: 92357`로 응답했다.
+- CDN 파일을 내려받아 sha384 계산 결과가 README/설치 페이지의 integrity 값과 일치함을 확인했다.
+- 검증:
+  - `pnpm build` 통과: widget.js 90.2KB, loader bookmarklet 0.5KB, inline 132.3KB(Safari 주의)
+  - `pnpm typecheck` 통과
+  - `pnpm test` 통과: 92 passed / 0 failed
+  - `pnpm test:browser` 통과: anchor/widget file 하니스 생성
+  - `node scripts/release-check.mjs --strict` 통과
